@@ -59,6 +59,8 @@
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         width: 300px;
         z-index: 1000;
+        max-height: 80vh;
+        overflow-y: auto;
     }
     .form-group {
         margin-bottom: 15px;
@@ -73,6 +75,7 @@
         padding: 8px;
         border: 1px solid #ddd;
         border-radius: 4px;
+        box-sizing: border-box;
     }
     .btn {
         padding: 8px 16px;
@@ -85,6 +88,10 @@
     .btn-success { background: #28a745; color: white; }
     .btn-danger { background: #dc3545; color: white; }
     .btn-secondary { background: #6c757d; color: white; }
+    
+    #skillPrerequisites {
+        height: 100px;
+    }
 </style>
 {% endblock %}
 
@@ -115,6 +122,13 @@
             </select>
         </div>
         <div class="form-group">
+            <label>Prerequisites:</label>
+            <select id="skillPrerequisites" multiple>
+                <!-- Will be populated by JavaScript -->
+            </select>
+            <small>Hold Ctrl/Cmd to select multiple skills</small>
+        </div>
+        <div class="form-group">
             <label>Cost:</label>
             <input type="number" id="skillCost" value="1" min="1">
         </div>
@@ -132,7 +146,6 @@
 </div>
 
 <script>
-let skills = {{ skills|safe }};
 let selectedSkill = null;
 let isDragging = false;
 let dragOffset = { x: 0, y: 0 };
@@ -150,8 +163,8 @@ let skillsData = [
         category_id: {{ skill.category.id }},
         cost: {{ skill.cost }},
         tier: {{ skill.tier }},
-        x: {{ skill.position_x }},
-        y: {{ skill.position_y }},
+        x: {{ skill.position_x|default:0 }},
+        y: {{ skill.position_y|default:0 }},
         prerequisites: [{% for prereq in skill.prerequisites.all %}{{ prereq.id }}{% if not forloop.last %},{% endif %}{% endfor %}]
     }{% if not forloop.last %},{% endif %}
     {% endfor %}
@@ -162,6 +175,18 @@ function initializeSkillTree() {
     
     // Clear existing content
     editor.innerHTML = '';
+    
+    // Update prerequisites dropdown
+    updatePrerequisitesDropdown();
+    
+    // If no skills exist, show a message
+    if (skillsData.length === 0) {
+        const message = document.createElement('div');
+        message.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 18px;';
+        message.textContent = 'No skills found. Create your first skill using the form on the right.';
+        editor.appendChild(message);
+        return;
+    }
     
     // Draw connection lines first
     skillsData.forEach(skill => {
@@ -176,6 +201,20 @@ function initializeSkillTree() {
     // Draw skill nodes
     skillsData.forEach(skill => {
         createSkillNode(skill);
+    });
+}
+
+function updatePrerequisitesDropdown() {
+    const select = document.getElementById('skillPrerequisites');
+    select.innerHTML = '';
+    
+    skillsData.forEach(skill => {
+        if (!selectedSkill || skill.id !== selectedSkill.id) {
+            const option = document.createElement('option');
+            option.value = skill.id;
+            option.textContent = `${skill.name} (T${skill.tier})`;
+            select.appendChild(option);
+        }
     });
 }
 
@@ -290,15 +329,19 @@ function selectSkill(e, skill) {
     document.getElementById('skillCost').value = skill.cost;
     document.getElementById('skillTier').value = skill.tier;
     
+    // Update prerequisites dropdown and select current prerequisites
+    updatePrerequisitesDropdown();
+    const prereqSelect = document.getElementById('skillPrerequisites');
+    Array.from(prereqSelect.options).forEach(option => {
+        option.selected = skill.prerequisites.includes(parseInt(option.value));
+    });
+    
     // Show update/delete buttons
     document.getElementById('updateBtn').style.display = 'inline-block';
     document.getElementById('deleteBtn').style.display = 'inline-block';
 }
 
 function createSkill() {
-    const editor = document.getElementById('skillTreeEditor');
-    const rect = editor.getBoundingClientRect();
-    
     const skillData = {
         name: document.getElementById('skillName').value || 'New Skill',
         description: document.getElementById('skillDescription').value,
@@ -306,7 +349,8 @@ function createSkill() {
         cost: parseInt(document.getElementById('skillCost').value),
         tier: parseInt(document.getElementById('skillTier').value),
         x: 0, // Center position
-        y: 0
+        y: 0,
+        prerequisites: Array.from(document.getElementById('skillPrerequisites').selectedOptions).map(option => parseInt(option.value))
     };
     
     fetch('/admin/skills/skill/create-skill-ajax/', {
@@ -330,7 +374,7 @@ function createSkill() {
                 tier: data.skill.tier,
                 x: skillData.x,
                 y: skillData.y,
-                prerequisites: []
+                prerequisites: skillData.prerequisites
             });
             
             // Refresh display
@@ -339,6 +383,55 @@ function createSkill() {
         } else {
             alert('Error creating skill: ' + data.error);
         }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error creating skill');
+    });
+}
+
+function updateSkill() {
+    if (!selectedSkill) return;
+    
+    const skillData = {
+        name: document.getElementById('skillName').value,
+        description: document.getElementById('skillDescription').value,
+        category_id: document.getElementById('skillCategory').value,
+        cost: parseInt(document.getElementById('skillCost').value),
+        tier: parseInt(document.getElementById('skillTier').value),
+        prerequisites: Array.from(document.getElementById('skillPrerequisites').selectedOptions).map(option => parseInt(option.value))
+    };
+    
+    fetch(`/admin/skills/skill/update-skill-ajax/${selectedSkill.id}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(skillData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update local data
+            const skillIndex = skillsData.findIndex(s => s.id === selectedSkill.id);
+            if (skillIndex !== -1) {
+                skillsData[skillIndex] = {
+                    ...skillsData[skillIndex],
+                    ...skillData,
+                    prerequisites: skillData.prerequisites
+                };
+            }
+            
+            // Refresh display
+            initializeSkillTree();
+            clearForm();
+        } else {
+            alert('Error updating skill: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error updating skill');
     });
 }
 
@@ -361,6 +454,10 @@ function deleteSkill() {
             } else {
                 alert('Error deleting skill: ' + data.error);
             }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting skill');
         });
     }
 }
@@ -370,6 +467,12 @@ function clearForm() {
     document.getElementById('skillDescription').value = '';
     document.getElementById('skillCost').value = '1';
     document.getElementById('skillTier').value = '1';
+    
+    // Clear prerequisites selection
+    const prereqSelect = document.getElementById('skillPrerequisites');
+    Array.from(prereqSelect.options).forEach(option => {
+        option.selected = false;
+    });
     
     document.getElementById('updateBtn').style.display = 'none';
     document.getElementById('deleteBtn').style.display = 'none';

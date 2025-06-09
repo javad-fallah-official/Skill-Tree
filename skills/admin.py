@@ -25,6 +25,7 @@ class SkillAdmin(admin.ModelAdmin):
             path('skill-tree-editor/', self.admin_site.admin_view(self.skill_tree_editor), name='skill_tree_editor'),
             path('update-skill-position/', self.admin_site.admin_view(self.update_skill_position), name='update_skill_position'),
             path('create-skill-ajax/', self.admin_site.admin_view(self.create_skill_ajax), name='create_skill_ajax'),
+            path('update-skill-ajax/<int:skill_id>/', self.admin_site.admin_view(self.update_skill_ajax), name='update_skill_ajax'),
             path('delete-skill-ajax/<int:skill_id>/', self.admin_site.admin_view(self.delete_skill_ajax), name='delete_skill_ajax'),
         ]
         return custom_urls + urls
@@ -77,6 +78,12 @@ class SkillAdmin(admin.ModelAdmin):
                     position_x=data.get('x', 0),
                     position_y=data.get('y', 0),
                 )
+                
+                # Set prerequisites
+                prerequisites = data.get('prerequisites', [])
+                if prerequisites:
+                    skill.prerequisites.set(prerequisites)
+                
                 return JsonResponse({
                     'success': True,
                     'skill': {
@@ -88,6 +95,32 @@ class SkillAdmin(admin.ModelAdmin):
                         'category': skill.category.name,
                     }
                 })
+            except Exception as e:
+                return JsonResponse({'success': False, 'error': str(e)})
+        
+        return JsonResponse({'success': False, 'error': 'Invalid request'})
+    
+    @csrf_exempt
+    def update_skill_ajax(self, request, skill_id):
+        """Update skill via AJAX"""
+        if request.method == 'POST':
+            data = json.loads(request.body)
+            try:
+                skill = Skill.objects.get(id=skill_id)
+                skill.name = data.get('name', skill.name)
+                skill.description = data.get('description', skill.description)
+                skill.category_id = data.get('category_id', skill.category_id)
+                skill.cost = data.get('cost', skill.cost)
+                skill.tier = data.get('tier', skill.tier)
+                skill.save()
+                
+                # Update prerequisites
+                prerequisites = data.get('prerequisites', [])
+                skill.prerequisites.set(prerequisites)
+                
+                return JsonResponse({'success': True})
+            except Skill.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Skill not found'})
             except Exception as e:
                 return JsonResponse({'success': False, 'error': str(e)})
         
