@@ -154,7 +154,7 @@
             <input type="number" id="skillTier" value="1" min="1">
         </div>
         <div class="form-group">
-            <button class="btn btn-success" onclick="createSkill()">Create Skill</button>
+            <button class="btn btn-success" onclick="createSkill()" id="createBtn">Create Skill</button>
             <button class="btn btn-primary" onclick="updateSkill()" id="updateBtn" style="display:none;">Update Skill</button>
             <button class="btn btn-danger" onclick="deleteSkill()" id="deleteBtn" style="display:none;">Delete Skill</button>
             <button class="btn btn-secondary" onclick="clearForm()">Clear</button>
@@ -342,12 +342,28 @@ function createSkillNode(skill) {
     node.style.top = `${skill.y + 400}px`;
     node.innerHTML = `<div>${skill.name}<br><small>T${skill.tier}</small></div>`;
     
+    let dragStartTime = 0;
+    let hasDragged = false;
+    
     // Add event listeners
-    node.addEventListener('mousedown', (e) => startDrag(e, skill));
+    node.addEventListener('mousedown', (e) => {
+        // Prevent text selection during drag
+        e.preventDefault();
+        dragStartTime = Date.now();
+        hasDragged = false;
+        startDrag(e, skill);
+    });
+    
     node.addEventListener('click', (e) => {
         e.stopPropagation();
-        selectSkill(e, skill);
+        // Only select if it was a quick click (not a drag)
+        const clickDuration = Date.now() - dragStartTime;
+        if (!hasDragged && clickDuration < 200) {
+            selectSkill(e, skill);
+        }
     });
+    
+    // Double-click as backup for selection
     node.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         selectSkill(e, skill);
@@ -431,6 +447,8 @@ function startDrag(e, skill) {
 function drag(e) {
     if (!isDragging || !selectedSkill) return;
     
+    hasDragged = true; // Mark that dragging occurred
+    
     const editor = document.getElementById('skillTreeEditor');
     const rect = editor.getBoundingClientRect();
     
@@ -463,7 +481,11 @@ function stopDrag() {
         setTimeout(() => initializeSkillTree(), 100);
     }
     
-    isDragging = false;
+    // Reset dragging state after a short delay to prevent click event
+    setTimeout(() => {
+        isDragging = false;
+    }, 50);
+    
     document.removeEventListener('mousemove', drag);
     document.removeEventListener('mouseup', stopDrag);
 }
@@ -483,7 +505,7 @@ function updateSkillPositionInDB(skillId, x, y) {
 }
 
 function selectSkill(e, skill) {
-    if (isDragging) return;
+    console.log('Selecting skill:', skill.name); // Debug log
     
     // Remove previous selection
     document.querySelectorAll('.skill-node').forEach(node => {
@@ -513,9 +535,15 @@ function selectSkill(e, skill) {
     });
     
     // Show update/delete buttons, hide create button
-    document.getElementById('createBtn').style.display = 'none';
-    document.getElementById('updateBtn').style.display = 'inline-block';
-    document.getElementById('deleteBtn').style.display = 'inline-block';
+    const createBtn = document.getElementById('createBtn');
+    const updateBtn = document.getElementById('updateBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+    
+    if (createBtn) createBtn.style.display = 'none';
+    if (updateBtn) updateBtn.style.display = 'inline-block';
+    if (deleteBtn) deleteBtn.style.display = 'inline-block';
+    
+    console.log('Buttons updated - Update:', updateBtn ? 'visible' : 'not found', 'Delete:', deleteBtn ? 'visible' : 'not found'); // Debug log
 }
 
 function createSkill() {
@@ -570,7 +598,10 @@ function createSkill() {
 }
 
 function updateSkill() {
-    if (!selectedSkill) return;
+    if (!selectedSkill) {
+        alert('No skill selected for update');
+        return;
+    }
     
     const skillData = {
         name: document.getElementById('skillName').value,
@@ -604,6 +635,7 @@ function updateSkill() {
             // Refresh display
             initializeSkillTree();
             clearForm();
+            alert('Skill updated successfully!');
         } else {
             alert('Error updating skill: ' + data.error);
         }
@@ -615,7 +647,10 @@ function updateSkill() {
 }
 
 function deleteSkill() {
-    if (!selectedSkill) return;
+    if (!selectedSkill) {
+        alert('No skill selected for deletion');
+        return;
+    }
     
     if (confirm(`Are you sure you want to delete "${selectedSkill.name}"?\n\nThis will also remove it as a prerequisite from other skills.`)) {
         fetch(`/admin/skills/skill/delete-skill-ajax/${selectedSkill.id}/`, {
@@ -633,6 +668,7 @@ function deleteSkill() {
                 // Refresh display
                 initializeSkillTree();
                 clearForm();
+                alert('Skill deleted successfully!');
             } else {
                 alert('Error deleting skill: ' + data.error);
             }
@@ -657,9 +693,13 @@ function clearForm() {
     });
     
     // Show create button, hide update/delete buttons
-    document.getElementById('createBtn').style.display = 'inline-block';
-    document.getElementById('updateBtn').style.display = 'none';
-    document.getElementById('deleteBtn').style.display = 'none';
+    const createBtn = document.getElementById('createBtn');
+    const updateBtn = document.getElementById('updateBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+    
+    if (createBtn) createBtn.style.display = 'inline-block';
+    if (updateBtn) updateBtn.style.display = 'none';
+    if (deleteBtn) deleteBtn.style.display = 'none';
     
     selectedSkill = null;
     
