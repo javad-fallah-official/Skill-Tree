@@ -33,6 +33,7 @@
         text-align: center;
         transition: all 0.3s;
         z-index: 10;
+        user-select: none;
     }
     .skill-node:hover {
         transform: scale(1.1);
@@ -41,6 +42,10 @@
     .skill-node.selected {
         border-color: #FFC107;
         box-shadow: 0 0 20px rgba(255, 193, 7, 0.5);
+    }
+    .skill-node.dragging {
+        z-index: 100;
+        transform: scale(1.1);
     }
     .connection-line {
         position: absolute;
@@ -92,6 +97,18 @@
     #skillPrerequisites {
         height: 100px;
     }
+    
+    .skill-info {
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+        position: absolute;
+        z-index: 1000;
+        pointer-events: none;
+        max-width: 200px;
+        font-size: 12px;
+    }
 </style>
 {% endblock %}
 
@@ -142,6 +159,10 @@
             <button class="btn btn-danger" onclick="deleteSkill()" id="deleteBtn" style="display:none;">Delete Skill</button>
             <button class="btn btn-secondary" onclick="clearForm()">Clear</button>
         </div>
+        <div class="form-group">
+            <button class="btn btn-secondary" onclick="autoArrangeSkills()">Auto Arrange</button>
+            <button class="btn btn-secondary" onclick="resetView()">Reset View</button>
+        </div>
     </div>
 </div>
 
@@ -151,6 +172,7 @@ let isDragging = false;
 let dragOffset = { x: 0, y: 0 };
 let panOffset = { x: 0, y: 0 };
 let isPanning = false;
+let skillTooltip = null;
 
 // Initialize skills data
 let skillsData = [
@@ -170,6 +192,99 @@ let skillsData = [
     {% endfor %}
 ];
 
+// Auto-arrange skills if they're overlapping
+function autoArrangeSkills() {
+    if (skillsData.length === 0) return;
+    
+    const nodeRadius = 40; // Including some padding
+    const minDistance = nodeRadius * 2;
+    
+    // Group skills by tier for better arrangement
+    const tierGroups = {};
+    skillsData.forEach(skill => {
+        if (!tierGroups[skill.tier]) {
+            tierGroups[skill.tier] = [];
+        }
+        tierGroups[skill.tier].push(skill);
+    });
+    
+    let currentY = -200;
+    Object.keys(tierGroups).sort((a, b) => parseInt(a) - parseInt(b)).forEach(tier => {
+        const skills = tierGroups[tier];
+        const skillsPerRow = Math.ceil(Math.sqrt(skills.length));
+        const rowWidth = skillsPerRow * minDistance;
+        
+        skills.forEach((skill, index) => {
+            const row = Math.floor(index / skillsPerRow);
+            const col = index % skillsPerRow;
+            
+            skill.x = (col * minDistance) - (rowWidth / 2) + (minDistance / 2);
+            skill.y = currentY + (row * minDistance);
+        });
+        
+        const rows = Math.ceil(skills.length / skillsPerRow);
+        currentY += (rows * minDistance) + 50; // Add spacing between tiers
+    });
+    
+    // Update positions in database
+    skillsData.forEach(skill => {
+        updateSkillPositionInDB(skill.id, skill.x, skill.y);
+    });
+    
+    initializeSkillTree();
+}
+
+// Check for overlapping skills and find a free position
+function findFreePosition(excludeId = null) {
+    const nodeRadius = 40;
+    const minDistance = nodeRadius * 2;
+    const maxAttempts = 100;
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const angle = (attempt * 137.5) * (Math.PI / 180); // Golden angle for spiral
+        const radius = Math.sqrt(attempt) * 30;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        
+        let isOverlapping = false;
+        for (let skill of skillsData) {
+            if (excludeId && skill.id === excludeId) continue;
+            
+            const distance = Math.sqrt(Math.pow(x - skill.x, 2) + Math.pow(y - skill.y, 2));
+            if (distance < minDistance) {
+                isOverlapping = true;
+                break;
+            }
+        }
+        
+        if (!isOverlapping) {
+            return { x, y };
+        }
+    }
+    
+    // Fallback to random position if spiral fails
+    return {
+        x: (Math.random() - 0.5) * 400,
+        y: (Math.random() - 0.5) * 400
+    };
+}
+
+// Check if position is valid (not overlapping)
+function isValidPosition(x, y, excludeId = null) {
+    const nodeRadius = 40;
+    const minDistance = nodeRadius * 2;
+    
+    for (let skill of skillsData) {
+        if (excludeId && skill.id === excludeId) continue;
+        
+        const distance = Math.sqrt(Math.pow(x - skill.x, 2) + Math.pow(y - skill.y, 2));
+        if (distance < minDistance) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function initializeSkillTree() {
     const editor = document.getElementById('skillTreeEditor');
     
@@ -182,8 +297,8 @@ function initializeSkillTree() {
     // If no skills exist, show a message
     if (skillsData.length === 0) {
         const message = document.createElement('div');
-        message.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 18px;';
-        message.textContent = 'No skills found. Create your first skill using the form on the right.';
+        message.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 18px; text-align: center;';
+        message.innerHTML = 'No skills found.<br>Create your first skill using the form on the right.';
         editor.appendChild(message);
         return;
     }
@@ -226,13 +341,50 @@ function createSkillNode(skill) {
     node.style.left = `${skill.x + 400}px`; // Center offset
     node.style.top = `${skill.y + 400}px`;
     node.innerHTML = `<div>${skill.name}<br><small>T${skill.tier}</small></div>`;
-    node.title = skill.description;
     
     // Add event listeners
     node.addEventListener('mousedown', (e) => startDrag(e, skill));
-    node.addEventListener('click', (e) => selectSkill(e, skill));
+    node.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectSkill(e, skill);
+    });
+    node.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        selectSkill(e, skill);
+    });
+    
+    // Tooltip on hover
+    node.addEventListener('mouseenter', (e) => showTooltip(e, skill));
+    node.addEventListener('mouseleave', hideTooltip);
     
     editor.appendChild(node);
+}
+
+function showTooltip(e, skill) {
+    if (isDragging) return;
+    
+    hideTooltip();
+    
+    skillTooltip = document.createElement('div');
+    skillTooltip.className = 'skill-info';
+    skillTooltip.innerHTML = `
+        <strong>${skill.name}</strong><br>
+        ${skill.description}<br>
+        <small>Cost: ${skill.cost} | Tier: ${skill.tier}</small>
+    `;
+    
+    document.body.appendChild(skillTooltip);
+    
+    const rect = e.target.getBoundingClientRect();
+    skillTooltip.style.left = `${rect.right + 10}px`;
+    skillTooltip.style.top = `${rect.top}px`;
+}
+
+function hideTooltip() {
+    if (skillTooltip) {
+        skillTooltip.remove();
+        skillTooltip = null;
+    }
 }
 
 function drawConnection(from, to) {
@@ -258,12 +410,19 @@ function drawConnection(from, to) {
 
 function startDrag(e, skill) {
     e.preventDefault();
+    e.stopPropagation();
+    
     selectedSkill = skill;
     isDragging = true;
+    
+    const node = document.getElementById(`skill-${skill.id}`);
+    node.classList.add('dragging');
     
     const rect = e.target.getBoundingClientRect();
     dragOffset.x = e.clientX - rect.left;
     dragOffset.y = e.clientY - rect.top;
+    
+    hideTooltip();
     
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', stopDrag);
@@ -278,36 +437,49 @@ function drag(e) {
     const x = e.clientX - rect.left - dragOffset.x;
     const y = e.clientY - rect.top - dragOffset.y;
     
-    selectedSkill.x = x - 400;
-    selectedSkill.y = y - 400;
+    const newX = x - 400;
+    const newY = y - 400;
     
-    const node = document.getElementById(`skill-${selectedSkill.id}`);
-    node.style.left = `${x}px`;
-    node.style.top = `${y}px`;
+    // Check if new position is valid (not overlapping)
+    if (isValidPosition(newX, newY, selectedSkill.id)) {
+        selectedSkill.x = newX;
+        selectedSkill.y = newY;
+        
+        const node = document.getElementById(`skill-${selectedSkill.id}`);
+        node.style.left = `${x}px`;
+        node.style.top = `${y}px`;
+    }
 }
 
 function stopDrag() {
     if (isDragging && selectedSkill) {
+        const node = document.getElementById(`skill-${selectedSkill.id}`);
+        node.classList.remove('dragging');
+        
         // Update position in database
-        fetch('/admin/skills/skill/update-skill-position/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                skill_id: selectedSkill.id,
-                x: selectedSkill.x,
-                y: selectedSkill.y
-            })
-        });
+        updateSkillPositionInDB(selectedSkill.id, selectedSkill.x, selectedSkill.y);
         
         // Redraw connections
-        initializeSkillTree();
+        setTimeout(() => initializeSkillTree(), 100);
     }
     
     isDragging = false;
     document.removeEventListener('mousemove', drag);
     document.removeEventListener('mouseup', stopDrag);
+}
+
+function updateSkillPositionInDB(skillId, x, y) {
+    fetch('/admin/skills/skill/update-skill-position/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            skill_id: skillId,
+            x: x,
+            y: y
+        })
+    }).catch(error => console.error('Error updating position:', error));
 }
 
 function selectSkill(e, skill) {
@@ -319,7 +491,11 @@ function selectSkill(e, skill) {
     });
     
     // Select current skill
-    e.target.classList.add('selected');
+    const node = e.target.closest('.skill-node');
+    if (node) {
+        node.classList.add('selected');
+    }
+    
     selectedSkill = skill;
     
     // Populate form
@@ -336,20 +512,23 @@ function selectSkill(e, skill) {
         option.selected = skill.prerequisites.includes(parseInt(option.value));
     });
     
-    // Show update/delete buttons
+    // Show update/delete buttons, hide create button
+    document.getElementById('createBtn').style.display = 'none';
     document.getElementById('updateBtn').style.display = 'inline-block';
     document.getElementById('deleteBtn').style.display = 'inline-block';
 }
 
 function createSkill() {
+    const position = findFreePosition();
+    
     const skillData = {
         name: document.getElementById('skillName').value || 'New Skill',
         description: document.getElementById('skillDescription').value,
         category_id: document.getElementById('skillCategory').value,
         cost: parseInt(document.getElementById('skillCost').value),
         tier: parseInt(document.getElementById('skillTier').value),
-        x: 0, // Center position
-        y: 0,
+        x: position.x,
+        y: position.y,
         prerequisites: Array.from(document.getElementById('skillPrerequisites').selectedOptions).map(option => parseInt(option.value))
     };
     
@@ -438,15 +617,18 @@ function updateSkill() {
 function deleteSkill() {
     if (!selectedSkill) return;
     
-    if (confirm(`Are you sure you want to delete "${selectedSkill.name}"?`)) {
+    if (confirm(`Are you sure you want to delete "${selectedSkill.name}"?\n\nThis will also remove it as a prerequisite from other skills.`)) {
         fetch(`/admin/skills/skill/delete-skill-ajax/${selectedSkill.id}/`, {
             method: 'DELETE'
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Remove from local data
+                // Remove from local data and clean up prerequisites
                 skillsData = skillsData.filter(s => s.id !== selectedSkill.id);
+                skillsData.forEach(skill => {
+                    skill.prerequisites = skill.prerequisites.filter(prereqId => prereqId !== selectedSkill.id);
+                });
                 
                 // Refresh display
                 initializeSkillTree();
@@ -474,6 +656,8 @@ function clearForm() {
         option.selected = false;
     });
     
+    // Show create button, hide update/delete buttons
+    document.getElementById('createBtn').style.display = 'inline-block';
     document.getElementById('updateBtn').style.display = 'none';
     document.getElementById('deleteBtn').style.display = 'none';
     
@@ -485,7 +669,48 @@ function clearForm() {
     });
 }
 
+function resetView() {
+    // Reset all skills to center area
+    skillsData.forEach(skill => {
+        skill.x = 0;
+        skill.y = 0;
+    });
+    
+    autoArrangeSkills();
+}
+
+// Click outside to deselect
+document.getElementById('skillTreeEditor').addEventListener('click', (e) => {
+    if (e.target.id === 'skillTreeEditor') {
+        clearForm();
+    }
+});
+
 // Initialize on page load
-document.addEventListener('DOMContentLoaded', initializeSkillTree);
+document.addEventListener('DOMContentLoaded', () => {
+    initializeSkillTree();
+    
+    // Auto-arrange if skills are overlapping on load
+    if (skillsData.length > 1) {
+        let hasOverlaps = false;
+        for (let i = 0; i < skillsData.length; i++) {
+            for (let j = i + 1; j < skillsData.length; j++) {
+                const distance = Math.sqrt(
+                    Math.pow(skillsData[i].x - skillsData[j].x, 2) + 
+                    Math.pow(skillsData[i].y - skillsData[j].y, 2)
+                );
+                if (distance < 80) {
+                    hasOverlaps = true;
+                    break;
+                }
+            }
+            if (hasOverlaps) break;
+        }
+        
+        if (hasOverlaps) {
+            setTimeout(autoArrangeSkills, 500);
+        }
+    }
+});
 </script>
 {% endblock %}
