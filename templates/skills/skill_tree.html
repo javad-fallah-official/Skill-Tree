@@ -1,140 +1,401 @@
+{% load math_filters %}
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Skill Tree</title>
+    <title>Skill Tree - Path of Exile Style</title>
     <style>
-        .skill-tree {
-            padding: 20px;
-            background: #1a1a2e;
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0a0a0a;
             color: white;
-            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
         }
-        .skill-category {
-            margin-bottom: 40px;
-            border: 2px solid #16213e;
-            border-radius: 10px;
-            padding: 20px;
-            background: #0f3460;
-        }
-        .skill-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-        .skill-card {
-            border: 2px solid #533483;
-            border-radius: 8px;
-            padding: 15px;
-            background: #16213e;
-            cursor: pointer;
-            transition: all 0.3s;
+        
+        .skill-tree-container {
             position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #0a0a0a 100%);
         }
-        .skill-card.unlocked {
-            border-color: #4CAF50;
-            background: #2d5a2d;
-        }
-        .skill-card.can-unlock {
-            border-color: #FFC107;
-            background: #3d3d1a;
-        }
-        .skill-card.locked {
-            border-color: #666;
-            background: #2a2a2a;
-            opacity: 0.6;
-        }
-        .skill-card:hover:not(.locked) {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        }
-        .skill-cost {
+        
+        .skill-tree-canvas {
             position: absolute;
-            top: 5px;
-            right: 5px;
-            background: #FF5722;
-            color: white;
+            top: 0;
+            left: 0;
+            cursor: grab;
+            transition: transform 0.1s ease-out;
+        }
+        
+        .skill-tree-canvas:active {
+            cursor: grabbing;
+        }
+        
+        .skill-node {
+            position: absolute;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
-            width: 25px;
-            height: 25px;
+            border: 2px solid #333;
+            background: radial-gradient(circle at 30% 30%, #2a2a3e, #1a1a2e);
+            cursor: pointer;
+            transition: all 0.3s ease;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
+            font-size: 10px;
+            text-align: center;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
         }
-        .skill-points {
-            background: #4CAF50;
+        
+        .skill-node.unlocked {
+            border-color: #d4af37;
+            background: radial-gradient(circle at 30% 30%, #d4af37, #b8941f);
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.6);
+            color: #000;
+        }
+        
+        .skill-node.available {
+            border-color: #4a9eff;
+            background: radial-gradient(circle at 30% 30%, #4a9eff, #2d5aa0);
+            box-shadow: 0 0 15px rgba(74, 158, 255, 0.4);
+            animation: pulse 2s infinite;
+        }
+        
+        .skill-node.locked {
+            border-color: #666;
+            background: radial-gradient(circle at 30% 30%, #333, #1a1a1a);
+            opacity: 0.6;
+        }
+        
+        .skill-node:hover:not(.locked) {
+            transform: scale(1.2);
+            z-index: 100;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 15px rgba(74, 158, 255, 0.4); }
+            50% { box-shadow: 0 0 25px rgba(74, 158, 255, 0.8); }
+        }
+        
+        .connection-line {
+            position: absolute;
+            background: linear-gradient(90deg, #333 0%, #555 50%, #333 100%);
+            height: 2px;
+            transform-origin: left center;
+            z-index: 1;
+        }
+        
+        .connection-line.active {
+            background: linear-gradient(90deg, #d4af37 0%, #fff 50%, #d4af37 100%);
+            box-shadow: 0 0 5px rgba(212, 175, 55, 0.8);
+        }
+        
+        .ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .skill-points-display {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px 25px;
+            border-radius: 10px;
+            border: 2px solid #d4af37;
+            pointer-events: auto;
+        }
+        
+        .skill-info-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            background: rgba(0,0,0,0.9);
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 20px;
+            pointer-events: auto;
+            display: none;
+        }
+        
+        .skill-info-panel.visible {
+            display: block;
+        }
+        
+        .skill-info-title {
+            color: #d4af37;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .skill-info-description {
+            margin-bottom: 15px;
+            line-height: 1.4;
+        }
+        
+        .skill-info-stats {
+            border-top: 1px solid #333;
+            padding-top: 10px;
+            font-size: 12px;
+            color: #ccc;
+        }
+        
+        .unlock-button {
+            background: linear-gradient(45deg, #4a9eff, #2d5aa0);
+            border: none;
             color: white;
             padding: 10px 20px;
             border-radius: 5px;
-            margin-bottom: 20px;
-            display: inline-block;
-        }
-        .unlock-btn {
-            background: #FFC107;
-            color: black;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
             cursor: pointer;
+            font-weight: bold;
             margin-top: 10px;
+            width: 100%;
+            transition: all 0.3s;
         }
-        .unlock-btn:disabled {
+        
+        .unlock-button:hover {
+            background: linear-gradient(45deg, #5aa9ff, #3d6ab0);
+            transform: translateY(-2px);
+        }
+        
+        .unlock-button:disabled {
             background: #666;
-            color: #ccc;
             cursor: not-allowed;
+            transform: none;
+        }
+        
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            pointer-events: auto;
+        }
+        
+        .zoom-btn {
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #333;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            margin: 5px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s;
+        }
+        
+        .zoom-btn:hover {
+            border-color: #d4af37;
+            background: rgba(212, 175, 55, 0.2);
+        }
+        
+        .category-legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 15px;
+            pointer-events: auto;
+        }
+        
+        .category-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        
+        .category-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
         }
     </style>
 </head>
 <body>
-    <div class="skill-tree">
-        <h1>Skill Tree</h1>
-        
-        <div class="skill-points">
-            Available Skill Points: {{ user_profile.available_skill_points }}
+    <div class="skill-tree-container">
+        <div class="skill-tree-canvas" id="skillTreeCanvas">
+            <!-- Skills and connections will be rendered here -->
         </div>
         
-        <!-- Admin controls for testing -->
-        <form method="post" action="{% url 'add_skill_points' %}" style="margin-bottom: 20px;">
-            {% csrf_token %}
-            <input type="number" name="points" value="5" min="1">
-            <button type="submit">Add Skill Points (Testing)</button>
-        </form>
-        
-        {% for category in categories %}
-        <div class="skill-category">
-            <h2>{{ category.name }}</h2>
-            <p>{{ category.description }}</p>
+        <div class="ui-overlay">
+            <div class="skill-points-display">
+                <div style="font-size: 14px; margin-bottom: 5px;">Skill Points</div>
+                <div style="font-size: 24px; font-weight: bold; color: #d4af37;">{{ user_profile.available_skill_points }}</div>
+            </div>
             
-            <div class="skill-grid">
-                {% for skill in category.skills.all %}
-                <div class="skill-card {% if skill.is_unlocked %}unlocked{% elif skill.can_unlock_status %}can-unlock{% else %}locked{% endif %}" 
-                     data-skill-id="{{ skill.id }}">
-                    <div class="skill-cost">{{ skill.cost }}</div>
-                    <h3>{{ skill.name }}</h3>
-                    <p>{{ skill.description }}</p>
-                    <small>Tier {{ skill.tier }}</small>
-                    
-                    {% if skill.is_unlocked %}
-                        <div style="color: #4CAF50; font-weight: bold;">✓ UNLOCKED</div>
-                    {% elif skill.can_unlock_status %}
-                        <button class="unlock-btn" onclick="unlockSkill({{ skill.id }})">
-                            Unlock ({{ skill.cost }} points)
-                        </button>
-                    {% else %}
-                        <div style="color: #ff6b6b;">{{ skill.unlock_message }}</div>
-                    {% endif %}
+            <div class="skill-info-panel" id="skillInfoPanel">
+                <div class="skill-info-title" id="skillTitle">Skill Name</div>
+                <div class="skill-info-description" id="skillDescription">Skill description goes here...</div>
+                <div class="skill-info-stats" id="skillStats">
+                    <div>Cost: <span id="skillCost">1</span> points</div>
+                    <div>Tier: <span id="skillTier">1</span></div>
+                    <div>Category: <span id="skillCategory">Category</span></div>
+                </div>
+                <button class="unlock-button" id="unlockButton" onclick="unlockSelectedSkill()">Unlock Skill</button>
+            </div>
+            
+            <div class="zoom-controls">
+                <button class="zoom-btn" onclick="zoomIn()">+</button>
+                <button class="zoom-btn" onclick="zoomOut()">−</button>
+                <button class="zoom-btn" onclick="resetZoom()" title="Reset Zoom">⌂</button>
+            </div>
+            
+            <div class="category-legend">
+                <div style="font-weight: bold; margin-bottom: 10px;">Categories</div>
+                {% for category in categories %}
+                <div class="category-item">
+                    <div class="category-color" style="background: hsl({{ forloop.counter0|add:30|mul:60 }}, 70%, 50%);"></div>
+                    <span>{{ category.name }}</span>
                 </div>
                 {% endfor %}
             </div>
         </div>
-        {% endfor %}
     </div>
     
     <script>
-        function unlockSkill(skillId) {
-            fetch(`/skills/unlock/${skillId}/`, {
+        let skillsData = [
+            {% for category in categories %}
+                {% for skill in category.skills.all %}
+                {
+                    id: {{ skill.id }},
+                    name: "{{ skill.name|escapejs }}",
+                    description: "{{ skill.description|escapejs }}",
+                    category: "{{ skill.category.name|escapejs }}",
+                    cost: {{ skill.cost }},
+                    tier: {{ skill.tier }},
+                    x: {{ skill.position_x }},
+                    y: {{ skill.position_y }},
+                    prerequisites: [{% for prereq in skill.prerequisites.all %}{{ prereq.id }}{% if not forloop.last %},{% endif %}{% endfor %}],
+                    unlocked: {{ skill.is_unlocked|yesno:"true,false" }},
+                    canUnlock: {{ skill.can_unlock_status|yesno:"true,false" }},
+                    categoryColor: "hsl({{ forloop.parentloop.counter0|add:30|mul:60 }}, 70%, 50%)"
+                }{% if not forloop.last %},{% endif %}
+                {% endfor %}{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ];
+        
+        let canvas = document.getElementById('skillTreeCanvas');
+        let selectedSkill = null;
+        let isDragging = false;
+        let lastMousePos = { x: 0, y: 0 };
+        let canvasOffset = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let zoomLevel = 1;
+        
+        function initializeSkillTree() {
+            canvas.innerHTML = '';
+            
+            // Draw connections first
+            skillsData.forEach(skill => {
+                skill.prerequisites.forEach(prereqId => {
+                    const prereq = skillsData.find(s => s.id === prereqId);
+                    if (prereq) {
+                        drawConnection(prereq, skill);
+                    }
+                });
+            });
+            
+            // Draw skill nodes
+            skillsData.forEach(skill => {
+                createSkillNode(skill);
+            });
+            
+            updateCanvasTransform();
+        }
+        
+        function createSkillNode(skill) {
+            const node = document.createElement('div');
+            node.className = `skill-node ${getSkillState(skill)}`;
+            node.id = `skill-${skill.id}`;
+            node.style.left = `${skill.x}px`;
+            node.style.top = `${skill.y}px`;
+            node.style.borderColor = skill.categoryColor;
+            node.innerHTML = `<div style="font-size: 8px; line-height: 1;">${skill.name}</div>`;
+            
+            node.addEventListener('click', () => selectSkill(skill));
+            node.addEventListener('mouseenter', () => showSkillPreview(skill));
+            
+            canvas.appendChild(node);
+        }
+        
+        function drawConnection(from, to) {
+            const line = document.createElement('div');
+            line.className = 'connection-line';
+            
+            const fromX = from.x + 25; // Center of node
+            const fromY = from.y + 25;
+            const toX = to.x + 25;
+            const toY = to.y + 25;
+            
+            const length = Math.sqrt(Math.pow(toX - fromX, 2) + Math.pow(toY - fromY, 2));
+            const angle = Math.atan2(toY - fromY, toX - fromX) * 180 / Math.PI;
+            
+            line.style.left = `${fromX}px`;
+            line.style.top = `${fromY}px`;
+            line.style.width = `${length}px`;
+            line.style.transform = `rotate(${angle}deg)`;
+            
+            if (from.unlocked && to.unlocked) {
+                line.classList.add('active');
+            }
+            
+            canvas.appendChild(line);
+        }
+        
+        function getSkillState(skill) {
+            if (skill.unlocked) return 'unlocked';
+            if (skill.canUnlock) return 'available';
+            return 'locked';
+        }
+        
+        function selectSkill(skill) {
+            selectedSkill = skill;
+            
+            // Update info panel
+            document.getElementById('skillTitle').textContent = skill.name;
+            document.getElementById('skillDescription').textContent = skill.description;
+            document.getElementById('skillCost').textContent = skill.cost;
+            document.getElementById('skillTier').textContent = skill.tier;
+            document.getElementById('skillCategory').textContent = skill.category;
+            
+            const unlockButton = document.getElementById('unlockButton');
+            if (skill.unlocked) {
+                unlockButton.textContent = 'Already Unlocked';
+                unlockButton.disabled = true;
+            } else if (skill.canUnlock) {
+                unlockButton.textContent = `Unlock (${skill.cost} points)`;
+                unlockButton.disabled = false;
+            } else {
+                unlockButton.textContent = 'Cannot Unlock';
+                unlockButton.disabled = true;
+            }
+            
+            document.getElementById('skillInfoPanel').classList.add('visible');
+        }
+        
+        function showSkillPreview(skill) {
+            // Could add tooltip functionality here
+        }
+        
+        function unlockSelectedSkill() {
+            if (!selectedSkill || !selectedSkill.canUnlock) return;
+            
+            fetch(`/skills/unlock/${selectedSkill.id}/`, {
                 method: 'POST',
                 headers: {
                     'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
@@ -144,7 +405,6 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert(data.message);
                     location.reload(); // Refresh to update the UI
                 } else {
                     alert(data.message);
@@ -155,6 +415,89 @@
                 alert('An error occurred while unlocking the skill.');
             });
         }
+        
+        // Pan and zoom functionality
+        canvas.addEventListener('mousedown', startPan);
+        canvas.addEventListener('wheel', handleZoom);
+        
+        function startPan(e) {
+            if (e.target === canvas) {
+                isDragging = true;
+                lastMousePos = { x: e.clientX, y: e.clientY };
+                document.addEventListener('mousemove', pan);
+                document.addEventListener('mouseup', stopPan);
+            }
+        }
+        
+        function pan(e) {
+            if (!isDragging) return;
+            
+            const deltaX = e.clientX - lastMousePos.x;
+            const deltaY = e.clientY - lastMousePos.y;
+            
+            canvasOffset.x += deltaX;
+            canvasOffset.y += deltaY;
+            
+            updateCanvasTransform();
+            
+            lastMousePos = { x: e.clientX, y: e.clientY };
+        }
+        
+        function stopPan() {
+            isDragging = false;
+            document.removeEventListener('mousemove', pan);
+            document.removeEventListener('mouseup', stopPan);
+        }
+        
+        function handleZoom(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            zoomLevel = Math.max(0.3, Math.min(3, zoomLevel * delta));
+            updateCanvasTransform();
+        }
+        
+        function zoomIn() {
+            zoomLevel = Math.min(3, zoomLevel * 1.2);
+            updateCanvasTransform();
+        }
+        
+        function zoomOut() {
+            zoomLevel = Math.max(0.3, zoomLevel * 0.8);
+            updateCanvasTransform();
+        }
+        
+        function resetZoom() {
+            zoomLevel = 1;
+            canvasOffset = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            updateCanvasTransform();
+        }
+        
+        function updateCanvasTransform() {
+            canvas.style.transform = `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${zoomLevel})`;
+        }
+        
+        // Close info panel when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.skill-info-panel') && !e.target.closest('.skill-node')) {
+                document.getElementById('skillInfoPanel').classList.remove('visible');
+            }
+        });
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initializeSkillTree);
+        
+        // Add CSRF token for AJAX requests
+        const csrfToken = '{{ csrf_token }}';
+        const metaTag = document.createElement('meta');
+        metaTag.name = 'csrf-token';
+        metaTag.content = csrfToken;
+        document.head.appendChild(metaTag);
+        
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrfmiddlewaretoken';
+        csrfInput.value = csrfToken;
+        document.body.appendChild(csrfInput);
     </script>
 </body>
 </html>

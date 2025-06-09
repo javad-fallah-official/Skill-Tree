@@ -1,0 +1,388 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extrahead %}
+<style>
+    .skill-tree-editor {
+        position: relative;
+        width: 100%;
+        height: 800px;
+        background: #1a1a2e;
+        border: 2px solid #333;
+        overflow: hidden;
+        cursor: grab;
+    }
+    .skill-tree-editor:active {
+        cursor: grabbing;
+    }
+    .skill-node {
+        position: absolute;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        border: 3px solid #666;
+        background: #2a2a3e;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: white;
+        text-align: center;
+        transition: all 0.3s;
+        z-index: 10;
+    }
+    .skill-node:hover {
+        transform: scale(1.1);
+        border-color: #4CAF50;
+    }
+    .skill-node.selected {
+        border-color: #FFC107;
+        box-shadow: 0 0 20px rgba(255, 193, 7, 0.5);
+    }
+    .connection-line {
+        position: absolute;
+        background: #666;
+        height: 2px;
+        transform-origin: left center;
+        z-index: 1;
+    }
+    .controls {
+        position: fixed;
+        top: 100px;
+        right: 20px;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        width: 300px;
+        z-index: 1000;
+    }
+    .form-group {
+        margin-bottom: 15px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .btn {
+        padding: 8px 16px;
+        margin: 5px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .btn-primary { background: #007cba; color: white; }
+    .btn-success { background: #28a745; color: white; }
+    .btn-danger { background: #dc3545; color: white; }
+    .btn-secondary { background: #6c757d; color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="skill-tree-editor" id="skillTreeEditor">
+    <!-- Skills will be rendered here -->
+</div>
+
+<div class="controls" id="controlPanel">
+    <h3>Skill Editor</h3>
+    <div id="skillForm">
+        <div class="form-group">
+            <label>Name:</label>
+            <input type="text" id="skillName" placeholder="Skill name">
+        </div>
+        <div class="form-group">
+            <label>Description:</label>
+            <textarea id="skillDescription" placeholder="Skill description"></textarea>
+        </div>
+        <div class="form-group">
+            <label>Category:</label>
+            <select id="skillCategory">
+                {% for category in categories %}
+                <option value="{{ category.id }}">{{ category.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Cost:</label>
+            <input type="number" id="skillCost" value="1" min="1">
+        </div>
+        <div class="form-group">
+            <label>Tier:</label>
+            <input type="number" id="skillTier" value="1" min="1">
+        </div>
+        <div class="form-group">
+            <button class="btn btn-success" onclick="createSkill()">Create Skill</button>
+            <button class="btn btn-primary" onclick="updateSkill()" id="updateBtn" style="display:none;">Update Skill</button>
+            <button class="btn btn-danger" onclick="deleteSkill()" id="deleteBtn" style="display:none;">Delete Skill</button>
+            <button class="btn btn-secondary" onclick="clearForm()">Clear</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let skills = {{ skills|safe }};
+let selectedSkill = null;
+let isDragging = false;
+let dragOffset = { x: 0, y: 0 };
+let panOffset = { x: 0, y: 0 };
+let isPanning = false;
+
+// Initialize skills data
+let skillsData = [
+    {% for skill in skills %}
+    {
+        id: {{ skill.id }},
+        name: "{{ skill.name|escapejs }}",
+        description: "{{ skill.description|escapejs }}",
+        category: "{{ skill.category.name|escapejs }}",
+        category_id: {{ skill.category.id }},
+        cost: {{ skill.cost }},
+        tier: {{ skill.tier }},
+        x: {{ skill.position_x }},
+        y: {{ skill.position_y }},
+        prerequisites: [{% for prereq in skill.prerequisites.all %}{{ prereq.id }}{% if not forloop.last %},{% endif %}{% endfor %}]
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+];
+
+function initializeSkillTree() {
+    const editor = document.getElementById('skillTreeEditor');
+    
+    // Clear existing content
+    editor.innerHTML = '';
+    
+    // Draw connection lines first
+    skillsData.forEach(skill => {
+        skill.prerequisites.forEach(prereqId => {
+            const prereq = skillsData.find(s => s.id === prereqId);
+            if (prereq) {
+                drawConnection(prereq, skill);
+            }
+        });
+    });
+    
+    // Draw skill nodes
+    skillsData.forEach(skill => {
+        createSkillNode(skill);
+    });
+}
+
+function createSkillNode(skill) {
+    const editor = document.getElementById('skillTreeEditor');
+    const node = document.createElement('div');
+    node.className = 'skill-node';
+    node.id = `skill-${skill.id}`;
+    node.style.left = `${skill.x + 400}px`; // Center offset
+    node.style.top = `${skill.y + 400}px`;
+    node.innerHTML = `<div>${skill.name}<br><small>T${skill.tier}</small></div>`;
+    node.title = skill.description;
+    
+    // Add event listeners
+    node.addEventListener('mousedown', (e) => startDrag(e, skill));
+    node.addEventListener('click', (e) => selectSkill(e, skill));
+    
+    editor.appendChild(node);
+}
+
+function drawConnection(from, to) {
+    const editor = document.getElementById('skillTreeEditor');
+    const line = document.createElement('div');
+    line.className = 'connection-line';
+    
+    const fromX = from.x + 400 + 30; // Center of node
+    const fromY = from.y + 400 + 30;
+    const toX = to.x + 400 + 30;
+    const toY = to.y + 400 + 30;
+    
+    const length = Math.sqrt(Math.pow(toX - fromX, 2) + Math.pow(toY - fromY, 2));
+    const angle = Math.atan2(toY - fromY, toX - fromX) * 180 / Math.PI;
+    
+    line.style.left = `${fromX}px`;
+    line.style.top = `${fromY}px`;
+    line.style.width = `${length}px`;
+    line.style.transform = `rotate(${angle}deg)`;
+    
+    editor.appendChild(line);
+}
+
+function startDrag(e, skill) {
+    e.preventDefault();
+    selectedSkill = skill;
+    isDragging = true;
+    
+    const rect = e.target.getBoundingClientRect();
+    dragOffset.x = e.clientX - rect.left;
+    dragOffset.y = e.clientY - rect.top;
+    
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', stopDrag);
+}
+
+function drag(e) {
+    if (!isDragging || !selectedSkill) return;
+    
+    const editor = document.getElementById('skillTreeEditor');
+    const rect = editor.getBoundingClientRect();
+    
+    const x = e.clientX - rect.left - dragOffset.x;
+    const y = e.clientY - rect.top - dragOffset.y;
+    
+    selectedSkill.x = x - 400;
+    selectedSkill.y = y - 400;
+    
+    const node = document.getElementById(`skill-${selectedSkill.id}`);
+    node.style.left = `${x}px`;
+    node.style.top = `${y}px`;
+}
+
+function stopDrag() {
+    if (isDragging && selectedSkill) {
+        // Update position in database
+        fetch('/admin/skills/skill/update-skill-position/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                skill_id: selectedSkill.id,
+                x: selectedSkill.x,
+                y: selectedSkill.y
+            })
+        });
+        
+        // Redraw connections
+        initializeSkillTree();
+    }
+    
+    isDragging = false;
+    document.removeEventListener('mousemove', drag);
+    document.removeEventListener('mouseup', stopDrag);
+}
+
+function selectSkill(e, skill) {
+    if (isDragging) return;
+    
+    // Remove previous selection
+    document.querySelectorAll('.skill-node').forEach(node => {
+        node.classList.remove('selected');
+    });
+    
+    // Select current skill
+    e.target.classList.add('selected');
+    selectedSkill = skill;
+    
+    // Populate form
+    document.getElementById('skillName').value = skill.name;
+    document.getElementById('skillDescription').value = skill.description;
+    document.getElementById('skillCategory').value = skill.category_id;
+    document.getElementById('skillCost').value = skill.cost;
+    document.getElementById('skillTier').value = skill.tier;
+    
+    // Show update/delete buttons
+    document.getElementById('updateBtn').style.display = 'inline-block';
+    document.getElementById('deleteBtn').style.display = 'inline-block';
+}
+
+function createSkill() {
+    const editor = document.getElementById('skillTreeEditor');
+    const rect = editor.getBoundingClientRect();
+    
+    const skillData = {
+        name: document.getElementById('skillName').value || 'New Skill',
+        description: document.getElementById('skillDescription').value,
+        category_id: document.getElementById('skillCategory').value,
+        cost: parseInt(document.getElementById('skillCost').value),
+        tier: parseInt(document.getElementById('skillTier').value),
+        x: 0, // Center position
+        y: 0
+    };
+    
+    fetch('/admin/skills/skill/create-skill-ajax/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(skillData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Add to local data
+            skillsData.push({
+                id: data.skill.id,
+                name: data.skill.name,
+                description: data.skill.description,
+                category: data.skill.category,
+                category_id: skillData.category_id,
+                cost: data.skill.cost,
+                tier: data.skill.tier,
+                x: skillData.x,
+                y: skillData.y,
+                prerequisites: []
+            });
+            
+            // Refresh display
+            initializeSkillTree();
+            clearForm();
+        } else {
+            alert('Error creating skill: ' + data.error);
+        }
+    });
+}
+
+function deleteSkill() {
+    if (!selectedSkill) return;
+    
+    if (confirm(`Are you sure you want to delete "${selectedSkill.name}"?`)) {
+        fetch(`/admin/skills/skill/delete-skill-ajax/${selectedSkill.id}/`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove from local data
+                skillsData = skillsData.filter(s => s.id !== selectedSkill.id);
+                
+                // Refresh display
+                initializeSkillTree();
+                clearForm();
+            } else {
+                alert('Error deleting skill: ' + data.error);
+            }
+        });
+    }
+}
+
+function clearForm() {
+    document.getElementById('skillName').value = '';
+    document.getElementById('skillDescription').value = '';
+    document.getElementById('skillCost').value = '1';
+    document.getElementById('skillTier').value = '1';
+    
+    document.getElementById('updateBtn').style.display = 'none';
+    document.getElementById('deleteBtn').style.display = 'none';
+    
+    selectedSkill = null;
+    
+    // Remove selection
+    document.querySelectorAll('.skill-node').forEach(node => {
+        node.classList.remove('selected');
+    });
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', initializeSkillTree);
+</script>
+{% endblock %}
