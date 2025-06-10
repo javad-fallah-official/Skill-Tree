@@ -75,7 +75,7 @@
     flex: 1;
     position: relative;
     background: var(--dark-bg);
-    overflow: auto; /* Allow scrolling */
+    overflow: hidden; /* Change from 'auto' to 'hidden' to prevent scrolling */
     /* Hide scrollbars for cleaner look */
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE/Edge */

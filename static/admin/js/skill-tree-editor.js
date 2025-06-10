@@ -64,6 +64,7 @@ class SkillTreeEditor {
     
     handleWheel(e) {
         e.preventDefault();
+        e.stopPropagation();
         const delta = e.deltaY > 0 ? -0.1 : 0.1;
         this.setZoom(this.zoomLevel + delta);
     }
@@ -98,11 +99,9 @@ class SkillTreeEditor {
         const x = e.clientX - rect.left - this.dragOffset.x;
         const y = e.clientY - rect.top - this.dragOffset.y;
         
-        const newX = x - 400;
-        const newY = y - 400;
-        
-        this.selectedSkill.x = newX;
-        this.selectedSkill.y = newY;
+        // Remove the hardcoded -400 offset that was causing the jump
+        this.selectedSkill.x = x;
+        this.selectedSkill.y = y;
         
         const node = document.getElementById(`skill-${this.selectedSkill.id}`);
         node.style.left = `${x}px`;
@@ -136,12 +135,10 @@ class SkillTreeEditor {
     
     updateCanvasTransform() {
         const editor = document.getElementById('skillTreeEditor');
-        const container = document.querySelector('.canvas-container');
-        
-        if (editor && container) {
-            // Use CSS transform for smooth panning and zooming
-            editor.style.transform = `scale(${this.zoomLevel}) translate(${this.panOffset.x}px, ${this.panOffset.y}px)`;
-            editor.style.transformOrigin = 'center center';
+        if (editor) {
+            // Apply translate first, then scale to avoid scaling the translation
+            editor.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
+            editor.style.transformOrigin = '0 0'; // Set origin to top-left for predictable behavior
         }
     }
     
@@ -368,8 +365,8 @@ class SkillTreeEditor {
         node.className = 'skill-node';
         node.id = `skill-${skill.id}`;
         node.textContent = skill.name;
-        node.style.left = `${skill.x + 400}px`;
-        node.style.top = `${skill.y + 400}px`;
+        node.style.left = `${skill.x}px`; // Remove + 400
+        node.style.top = `${skill.y}px`;  // Remove + 400
         
         // Add event listeners
         node.addEventListener('click', (e) => this.selectSkill(skill, e));
@@ -402,10 +399,10 @@ class SkillTreeEditor {
         const line = document.createElement('div');
         line.className = 'connection-line';
         
-        const fromX = from.x + 400 + 30; // Center of node
-        const fromY = from.y + 400 + 30;
-        const toX = to.x + 400 + 30;
-        const toY = to.y + 400 + 30;
+        const fromX = from.x + 30; // Center of node (remove + 400)
+        const fromY = from.y + 30; // Center of node (remove + 400)
+        const toX = to.x + 30;     // Center of node (remove + 400)
+        const toY = to.y + 30;     // Center of node (remove + 400)
         
         const length = Math.sqrt(Math.pow(toX - fromX, 2) + Math.pow(toY - fromY, 2));
         const angle = Math.atan2(toY - fromY, toX - fromX) * 180 / Math.PI;
@@ -597,7 +594,9 @@ class SkillTreeEditor {
     updateCanvasTransform() {
         const editor = document.getElementById('skillTreeEditor');
         if (editor) {
-            editor.style.transform = `scale(${this.zoomLevel}) translate(${this.panOffset.x}px, ${this.panOffset.y}px)`;
+            // Apply translate first, then scale to avoid scaling the translation
+            editor.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
+            editor.style.transformOrigin = 'center center';
         }
     }
     
