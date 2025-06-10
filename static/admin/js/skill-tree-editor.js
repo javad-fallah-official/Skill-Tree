@@ -134,16 +134,35 @@ class SkillTreeEditor {
         }, 10);
     }
     
+    updateCanvasTransform() {
+        const editor = document.getElementById('skillTreeEditor');
+        const container = document.querySelector('.canvas-container');
+        
+        if (editor && container) {
+            // Use CSS transform for smooth panning and zooming
+            editor.style.transform = `scale(${this.zoomLevel}) translate(${this.panOffset.x}px, ${this.panOffset.y}px)`;
+            editor.style.transformOrigin = 'center center';
+        }
+    }
+    
     startPan(e) {
+        // Only start panning if not clicking on a skill node
+        if (e.target.classList.contains('skill-node')) return;
+        
         this.isPanning = true;
         this.panStart = { x: e.clientX, y: e.clientY };
+        
+        const editor = document.getElementById('skillTreeEditor');
+        if (editor) {
+            editor.style.cursor = 'grabbing';
+        }
     }
     
     pan(e) {
         if (!this.isPanning) return;
         
-        const deltaX = e.clientX - this.panStart.x;
-        const deltaY = e.clientY - this.panStart.y;
+        const deltaX = (e.clientX - this.panStart.x) / this.zoomLevel;
+        const deltaY = (e.clientY - this.panStart.y) / this.zoomLevel;
         
         this.panOffset.x += deltaX;
         this.panOffset.y += deltaY;
@@ -154,7 +173,52 @@ class SkillTreeEditor {
     }
     
     stopPan() {
-        this.isPanning = false;
+        if (this.isPanning) {
+            this.isPanning = false;
+            
+            const editor = document.getElementById('skillTreeEditor');
+            if (editor) {
+                editor.style.cursor = 'grab';
+            }
+        }
+    }
+    
+    // Add method to center view on all skills
+    centerViewOnSkills() {
+        if (skillsData.length === 0) return;
+        
+        // Calculate bounds of all skills
+        const bounds = {
+            minX: Math.min(...skillsData.map(s => s.x)),
+            maxX: Math.max(...skillsData.map(s => s.x)),
+            minY: Math.min(...skillsData.map(s => s.y)),
+            maxY: Math.max(...skillsData.map(s => s.y))
+        };
+        
+        // Calculate center point
+        const centerX = (bounds.minX + bounds.maxX) / 2;
+        const centerY = (bounds.minY + bounds.maxY) / 2;
+        
+        // Center the view
+        this.panOffset.x = -centerX;
+        this.panOffset.y = -centerY;
+        
+        this.updateCanvasTransform();
+    }
+    
+    // Update the resetView method
+    resetView() {
+        this.zoomLevel = 1;
+        this.panOffset = { x: 0, y: 0 };
+        this.updateCanvasTransform();
+        
+        const zoomDisplay = document.getElementById('zoomLevel');
+        if (zoomDisplay) {
+            zoomDisplay.textContent = '100%';
+        }
+        
+        // Center on skills after reset
+        setTimeout(() => this.centerViewOnSkills(), 100);
     }
     
     updateSkillPositionInDB(skillId, x, y) {
