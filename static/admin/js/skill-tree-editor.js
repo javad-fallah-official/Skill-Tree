@@ -548,25 +548,148 @@ class SkillTreeEditor {
     autoArrangeSkills() {
         if (skillsData.length === 0) return;
         
-        const nodeRadius = 40;
-        const minDistance = nodeRadius * 2;
+        // Find root nodes (skills with no prerequisites)
+        const rootNodes = skillsData.filter(skill => 
+            !skill.prerequisites || skill.prerequisites.length === 0
+        );
         
-        // Simple grid arrangement
-        const cols = Math.ceil(Math.sqrt(skillsData.length));
-        const spacing = 120;
+        // Build dependency tree for each root
+        const trees = rootNodes.map(root => this.buildSkillTree(root));
         
-        skillsData.forEach((skill, index) => {
-            const row = Math.floor(index / cols);
-            const col = index % cols;
+        // Layout configuration for more organic appearance
+        const treeSpacing = 400; // Horizontal spacing between different trees
+        const levelSpacing = 180; // Vertical spacing between levels
+        const baseNodeSpacing = 100; // Base horizontal spacing between nodes
+        const curveFactor = 0.3; // How much to curve the branches
+        
+        let currentTreeX = 0;
+        
+        trees.forEach(tree => {
+            // Calculate tree dimensions
+            const treeDepth = this.calculateTreeDepth(tree);
+            const treeWidth = this.calculateTreeWidth(tree, baseNodeSpacing);
+            const treeStartX = currentTreeX - treeWidth / 2;
             
-            skill.x = (col - cols / 2) * spacing;
-            skill.y = (row - Math.ceil(skillsData.length / cols) / 2) * spacing;
+            // Position root at bottom, leaves at top
+            const rootY = (treeDepth - 1) * levelSpacing;
             
-            // Update position in database
+            // Position nodes in this tree with organic spacing
+            this.positionTreeNodesOrganic(tree, treeStartX, rootY, -levelSpacing, baseNodeSpacing, 0);
+            
+            // Move to next tree position
+            currentTreeX += treeWidth + treeSpacing;
+        });
+        
+        // Update all positions in database
+        skillsData.forEach(skill => {
             this.updateSkillPositionInDB(skill.id, skill.x, skill.y);
         });
         
         this.refreshDisplay();
+    }
+    
+    buildSkillTree(rootSkill) {
+        const visited = new Set();
+        
+        const buildNode = (skill, depth = 0) => {
+            if (visited.has(skill.id)) return null;
+            visited.add(skill.id);
+            
+            // Find children (skills that have this skill as prerequisite)
+            const children = skillsData.filter(s => 
+                s.prerequisites && s.prerequisites.includes(skill.id)
+            ).map(child => buildNode(child, depth + 1)).filter(Boolean);
+            
+            return {
+                skill: skill,
+                children: children,
+                depth: depth
+            };
+        };
+        
+        return buildNode(rootSkill);
+    }
+    
+    calculateTreeDepth(node) {
+        if (!node || !node.children || node.children.length === 0) {
+            return 1;
+        }
+        
+        return 1 + Math.max(...node.children.map(child => this.calculateTreeDepth(child)));
+    }
+    
+    calculateTreeWidth(node, baseSpacing) {
+        if (!node || !node.children || node.children.length === 0) {
+            return baseSpacing;
+        }
+        
+        // Width increases with depth for more organic spread
+        const depthMultiplier = 1 + (node.depth * 0.2);
+        const childrenWidth = node.children.reduce((sum, child) => 
+            sum + this.calculateTreeWidth(child, baseSpacing * depthMultiplier), 0
+        );
+        
+        return Math.max(baseSpacing * depthMultiplier, childrenWidth);
+    }
+    
+    positionTreeNodesOrganic(node, startX, startY, levelSpacing, nodeSpacing, parentX = null) {
+        if (!node) return { width: 0, centerX: startX };
+        
+        // Add some organic variation to positioning
+        const depthVariation = Math.sin(node.depth * 0.5) * 20; // Slight curve based on depth
+        const organicSpacing = nodeSpacing * (1 + node.depth * 0.15); // Increase spacing with depth
+        
+        if (!node.children || node.children.length === 0) {
+            // Leaf node positioning with slight randomization for organic feel
+            const leafVariation = (Math.random() - 0.5) * 30;
+            node.skill.x = startX + leafVariation;
+            node.skill.y = startY + depthVariation;
+            return { width: organicSpacing, centerX: startX };
+        }
+        
+        // Position children first
+        let currentChildX = startX;
+        const childResults = [];
+        
+        node.children.forEach((child, index) => {
+            // Add slight offset for each child to create more organic branching
+            const branchOffset = (index - (node.children.length - 1) / 2) * 15;
+            
+            const result = this.positionTreeNodesOrganic(
+                child, 
+                currentChildX + branchOffset, 
+                startY + levelSpacing, 
+                levelSpacing, 
+                organicSpacing,
+                startX
+            );
+            childResults.push(result);
+            currentChildX += result.width;
+        });
+        
+        // Calculate center position for parent
+        const totalWidth = childResults.reduce((sum, result) => sum + result.width, 0);
+        let centerX;
+        
+        if (childResults.length > 0) {
+            const leftmostChild = childResults[0].centerX;
+            const rightmostChild = childResults[childResults.length - 1].centerX;
+            centerX = (leftmostChild + rightmostChild) / 2;
+        } else {
+            centerX = startX;
+        }
+        
+        // Add organic positioning with slight curve toward parent
+        if (parentX !== null) {
+            const pullTowardParent = (parentX - centerX) * 0.1; // Slight pull toward parent
+            centerX += pullTowardParent;
+        }
+        
+        // Position parent
+        node.skill.x = centerX + depthVariation;
+        node.skill.y = startY;
+        
+        return { width: totalWidth, centerX: centerX };
     }
     
     resetView() {
@@ -666,7 +789,3 @@ function zoomIn() {
 function zoomOut() {
     skillTreeEditor.setZoom(skillTreeEditor.zoomLevel - 0.1);
 }
-// Remove this duplicate function:
-// hasSkillDependents(skillId) {
-//     return skillsData.some(skill => skill.prerequisites.includes(skillId));
-// }
