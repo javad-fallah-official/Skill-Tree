@@ -9,13 +9,11 @@ class SkillTreeEditor {
         this.zoomLevel = 1;
         this.skillTooltip = null;
         this.gridVisible = false;
-        this.hasDragged = false;
         
         this.initializeEventListeners();
     }
     
     initializeEventListeners() {
-        // Canvas events
         const editor = document.getElementById('skillTreeEditor');
         if (editor) {
             editor.addEventListener('click', (e) => this.handleCanvasClick(e));
@@ -25,7 +23,6 @@ class SkillTreeEditor {
             editor.addEventListener('wheel', (e) => this.handleWheel(e));
         }
         
-        // Search functionality
         const searchInput = document.getElementById('skillsSearch');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
@@ -34,7 +31,6 @@ class SkillTreeEditor {
         }
     }
     
-    // Canvas interaction methods
     handleCanvasClick(e) {
         if (e.target.id === 'skillTreeEditor') {
             this.clearSelection();
@@ -76,7 +72,6 @@ class SkillTreeEditor {
         const skillId = e.target.id.replace('skill-', '');
         this.selectedSkill = skillsData.find(s => s.id == skillId);
         this.isDragging = true;
-        this.hasDragged = false;
         
         const node = e.target;
         node.classList.add('dragging');
@@ -91,15 +86,12 @@ class SkillTreeEditor {
     drag(e) {
         if (!this.isDragging || !this.selectedSkill) return;
         
-        this.hasDragged = true;
-        
         const editor = document.getElementById('skillTreeEditor');
         const rect = editor.getBoundingClientRect();
         
         const x = e.clientX - rect.left - this.dragOffset.x;
         const y = e.clientY - rect.top - this.dragOffset.y;
         
-        // Remove the hardcoded -400 offset that was causing the jump
         this.selectedSkill.x = x;
         this.selectedSkill.y = y;
         
@@ -107,7 +99,6 @@ class SkillTreeEditor {
         node.style.left = `${x}px`;
         node.style.top = `${y}px`;
         
-        // Only update connections if this skill has prerequisites or dependents
         if (this.selectedSkill.prerequisites.length > 0 || this.hasSkillDependents(this.selectedSkill.id)) {
             this.renderConnections();
         }
@@ -120,14 +111,10 @@ class SkillTreeEditor {
                 node.classList.remove('dragging');
             }
             
-            // Update position in database
             this.updateSkillPositionInDB(this.selectedSkill.id, this.selectedSkill.x, this.selectedSkill.y);
-            
-            // Redraw connections with a small delay to ensure DOM is stable
             setTimeout(() => this.renderConnections(), 10);
         }
         
-        // Reset dragging state with minimal delay
         setTimeout(() => {
             this.isDragging = false;
         }, 10);
@@ -136,14 +123,12 @@ class SkillTreeEditor {
     updateCanvasTransform() {
         const editor = document.getElementById('skillTreeEditor');
         if (editor) {
-            // Apply translate first, then scale to avoid scaling the translation
             editor.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
-            editor.style.transformOrigin = '0 0'; // Set origin to top-left for predictable behavior
+            editor.style.transformOrigin = '0 0';
         }
     }
     
     startPan(e) {
-        // Only start panning if not clicking on a skill node
         if (e.target.classList.contains('skill-node')) return;
         
         this.isPanning = true;
@@ -180,11 +165,9 @@ class SkillTreeEditor {
         }
     }
     
-    // Add method to center view on all skills
     centerViewOnSkills() {
         if (skillsData.length === 0) return;
         
-        // Calculate bounds of all skills
         const bounds = {
             minX: Math.min(...skillsData.map(s => s.x)),
             maxX: Math.max(...skillsData.map(s => s.x)),
@@ -192,18 +175,15 @@ class SkillTreeEditor {
             maxY: Math.max(...skillsData.map(s => s.y))
         };
         
-        // Calculate center point
         const centerX = (bounds.minX + bounds.maxX) / 2;
         const centerY = (bounds.minY + bounds.maxY) / 2;
         
-        // Center the view
         this.panOffset.x = -centerX;
         this.panOffset.y = -centerY;
         
         this.updateCanvasTransform();
     }
     
-    // Update the resetView method
     resetView() {
         this.zoomLevel = 1;
         this.panOffset = { x: 0, y: 0 };
@@ -214,7 +194,6 @@ class SkillTreeEditor {
             zoomDisplay.textContent = '100%';
         }
         
-        // Center on skills after reset
         setTimeout(() => this.centerViewOnSkills(), 100);
     }
     
@@ -232,11 +211,10 @@ class SkillTreeEditor {
             })
         })
         .catch(error => {
-            console.error('Error updating position:', error);
+            this.showNotification('Error updating position', 'error');
         });
     }
     
-    // Skill management methods
     createSkill() {
         const formData = this.getFormData();
         if (!this.validateFormData(formData)) return;
@@ -250,7 +228,6 @@ class SkillTreeEditor {
             body: JSON.stringify(formData)
         })
         .then(response => {
-            // Check if response is ok before parsing JSON
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -258,7 +235,6 @@ class SkillTreeEditor {
         })
         .then(data => {
             if (data.success) {
-                // Ensure prerequisites is an array
                 if (!data.skill.prerequisites) {
                     data.skill.prerequisites = [];
                 }
@@ -271,7 +247,6 @@ class SkillTreeEditor {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             this.showNotification('Error creating skill: ' + error.message, 'error');
         });
     }
@@ -301,7 +276,6 @@ class SkillTreeEditor {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             this.showNotification('Error updating skill', 'error');
         });
     }
@@ -331,12 +305,10 @@ class SkillTreeEditor {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             this.showNotification('Error deleting skill', 'error');
         });
     }
     
-    // UI helper methods
     refreshDisplay() {
         this.renderSkills();
         setTimeout(() => {
@@ -351,7 +323,6 @@ class SkillTreeEditor {
         const editor = document.getElementById('skillTreeEditor');
         if (!editor) return;
         
-        // Clear existing nodes
         editor.querySelectorAll('.skill-node').forEach(node => node.remove());
         
         skillsData.forEach(skill => {
@@ -365,10 +336,9 @@ class SkillTreeEditor {
         node.className = 'skill-node';
         node.id = `skill-${skill.id}`;
         node.textContent = skill.name;
-        node.style.left = `${skill.x}px`; // Remove + 400
-        node.style.top = `${skill.y}px`;  // Remove + 400
+        node.style.left = `${skill.x}px`;
+        node.style.top = `${skill.y}px`;
         
-        // Add event listeners
         node.addEventListener('click', (e) => this.selectSkill(skill, e));
         node.addEventListener('mouseenter', (e) => this.showTooltip(skill, e));
         node.addEventListener('mouseleave', () => this.hideTooltip());
@@ -380,10 +350,8 @@ class SkillTreeEditor {
         const editor = document.getElementById('skillTreeEditor');
         if (!editor) return;
         
-        // Clear existing connections
         editor.querySelectorAll('.connection-line').forEach(line => line.remove());
         
-        // Draw connections
         skillsData.forEach(skill => {
             skill.prerequisites.forEach(prereqId => {
                 const prereqSkill = skillsData.find(s => s.id === prereqId);
@@ -399,10 +367,10 @@ class SkillTreeEditor {
         const line = document.createElement('div');
         line.className = 'connection-line';
         
-        const fromX = from.x + 30; // Center of node (remove + 400)
-        const fromY = from.y + 30; // Center of node (remove + 400)
-        const toX = to.x + 30;     // Center of node (remove + 400)
-        const toY = to.y + 30;     // Center of node (remove + 400)
+        const fromX = from.x + 30;
+        const fromY = from.y + 30;
+        const toX = to.x + 30;
+        const toY = to.y + 30;
         
         const length = Math.sqrt(Math.pow(toX - fromX, 2) + Math.pow(toY - fromY, 2));
         const angle = Math.atan2(toY - fromY, toX - fromX) * 180 / Math.PI;
@@ -418,12 +386,10 @@ class SkillTreeEditor {
     selectSkill(skill, event) {
         event.stopPropagation();
         
-        // Remove previous selection
         document.querySelectorAll('.skill-node').forEach(node => {
             node.classList.remove('selected');
         });
         
-        // Add selection to current skill
         document.getElementById(`skill-${skill.id}`).classList.add('selected');
         
         this.selectedSkill = skill;
@@ -438,13 +404,11 @@ class SkillTreeEditor {
         document.getElementById('skillCost').value = skill.cost;
         document.getElementById('skillTier').value = skill.tier;
         
-        // Set prerequisites
         const prereqSelect = document.getElementById('skillPrerequisites');
         Array.from(prereqSelect.options).forEach(option => {
             option.selected = skill.prerequisites.includes(parseInt(option.value));
         });
         
-        // Show update/delete buttons, hide create button
         document.getElementById('createBtn').style.display = 'none';
         document.getElementById('updateBtn').style.display = 'inline-block';
         document.getElementById('deleteBtn').style.display = 'inline-block';
@@ -465,20 +429,17 @@ class SkillTreeEditor {
         document.getElementById('skillCost').value = '1';
         document.getElementById('skillTier').value = '1';
         
-        // Clear prerequisites selection
         const prereqSelect = document.getElementById('skillPrerequisites');
         Array.from(prereqSelect.options).forEach(option => {
             option.selected = false;
         });
         
-        // Show create button, hide update/delete buttons
         document.getElementById('createBtn').style.display = 'inline-block';
         document.getElementById('updateBtn').style.display = 'none';
         document.getElementById('deleteBtn').style.display = 'none';
         
         this.selectedSkill = null;
         
-        // Remove selection
         document.querySelectorAll('.skill-node').forEach(node => {
             node.classList.remove('selected');
         });
@@ -580,7 +541,6 @@ class SkillTreeEditor {
         }
     }
     
-    // Zoom and view controls
     setZoom(newZoom) {
         this.zoomLevel = Math.max(0.5, Math.min(2, newZoom));
         this.updateCanvasTransform();
@@ -588,15 +548,6 @@ class SkillTreeEditor {
         const zoomDisplay = document.getElementById('zoomLevel');
         if (zoomDisplay) {
             zoomDisplay.textContent = Math.round(this.zoomLevel * 100) + '%';
-        }
-    }
-    
-    updateCanvasTransform() {
-        const editor = document.getElementById('skillTreeEditor');
-        if (editor) {
-            // Apply translate first, then scale to avoid scaling the translation
-            editor.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
-            editor.style.transformOrigin = 'center center';
         }
     }
     
@@ -611,39 +562,30 @@ class SkillTreeEditor {
     autoArrangeSkills() {
         if (skillsData.length === 0) return;
         
-        // Find root nodes (skills with no prerequisites)
         const rootNodes = skillsData.filter(skill => 
             !skill.prerequisites || skill.prerequisites.length === 0
         );
         
-        // Build dependency tree for each root
         const trees = rootNodes.map(root => this.buildSkillTree(root));
         
-        // Layout configuration for more organic appearance
-        const treeSpacing = 400; // Horizontal spacing between different trees
-        const levelSpacing = 180; // Vertical spacing between levels
-        const baseNodeSpacing = 100; // Base horizontal spacing between nodes
-        const curveFactor = 0.3; // How much to curve the branches
+        const treeSpacing = 400;
+        const levelSpacing = 180;
+        const baseNodeSpacing = 100;
         
         let currentTreeX = 0;
         
         trees.forEach(tree => {
-            // Calculate tree dimensions
             const treeDepth = this.calculateTreeDepth(tree);
             const treeWidth = this.calculateTreeWidth(tree, baseNodeSpacing);
             const treeStartX = currentTreeX - treeWidth / 2;
             
-            // Position root at bottom, leaves at top
             const rootY = (treeDepth - 1) * levelSpacing;
             
-            // Position nodes in this tree with organic spacing
             this.positionTreeNodesOrganic(tree, treeStartX, rootY, -levelSpacing, baseNodeSpacing, 0);
             
-            // Move to next tree position
             currentTreeX += treeWidth + treeSpacing;
         });
         
-        // Update all positions in database
         skillsData.forEach(skill => {
             this.updateSkillPositionInDB(skill.id, skill.x, skill.y);
         });
@@ -658,7 +600,6 @@ class SkillTreeEditor {
             if (visited.has(skill.id)) return null;
             visited.add(skill.id);
             
-            // Find children (skills that have this skill as prerequisite)
             const children = skillsData.filter(s => 
                 s.prerequisites && s.prerequisites.includes(skill.id)
             ).map(child => buildNode(child, depth + 1)).filter(Boolean);
@@ -686,7 +627,6 @@ class SkillTreeEditor {
             return baseSpacing;
         }
         
-        // Width increases with depth for more organic spread
         const depthMultiplier = 1 + (node.depth * 0.2);
         const childrenWidth = node.children.reduce((sum, child) => 
             sum + this.calculateTreeWidth(child, baseSpacing * depthMultiplier), 0
@@ -698,24 +638,20 @@ class SkillTreeEditor {
     positionTreeNodesOrganic(node, startX, startY, levelSpacing, nodeSpacing, parentX = null) {
         if (!node) return { width: 0, centerX: startX };
         
-        // Add some organic variation to positioning
-        const depthVariation = Math.sin(node.depth * 0.5) * 20; // Slight curve based on depth
-        const organicSpacing = nodeSpacing * (1 + node.depth * 0.15); // Increase spacing with depth
+        const depthVariation = Math.sin(node.depth * 0.5) * 20;
+        const organicSpacing = nodeSpacing * (1 + node.depth * 0.15);
         
         if (!node.children || node.children.length === 0) {
-            // Leaf node positioning with slight randomization for organic feel
             const leafVariation = (Math.random() - 0.5) * 30;
             node.skill.x = startX + leafVariation;
             node.skill.y = startY + depthVariation;
             return { width: organicSpacing, centerX: startX };
         }
         
-        // Position children first
         let currentChildX = startX;
         const childResults = [];
         
         node.children.forEach((child, index) => {
-            // Add slight offset for each child to create more organic branching
             const branchOffset = (index - (node.children.length - 1) / 2) * 15;
             
             const result = this.positionTreeNodesOrganic(
@@ -730,7 +666,6 @@ class SkillTreeEditor {
             currentChildX += result.width;
         });
         
-        // Calculate center position for parent
         const totalWidth = childResults.reduce((sum, result) => sum + result.width, 0);
         let centerX;
         
@@ -742,35 +677,21 @@ class SkillTreeEditor {
             centerX = startX;
         }
         
-        // Add organic positioning with slight curve toward parent
         if (parentX !== null) {
-            const pullTowardParent = (parentX - centerX) * 0.1; // Slight pull toward parent
+            const pullTowardParent = (parentX - centerX) * 0.1;
             centerX += pullTowardParent;
         }
         
-        // Position parent
         node.skill.x = centerX + depthVariation;
         node.skill.y = startY;
         
         return { width: totalWidth, centerX: centerX };
     }
     
-    resetView() {
-        this.zoomLevel = 1;
-        this.panOffset = { x: 0, y: 0 };
-        this.updateCanvasTransform();
-        
-        const zoomDisplay = document.getElementById('zoomLevel');
-        if (zoomDisplay) {
-            zoomDisplay.textContent = '100%';
-        }
-    }
-    
     hasSkillDependents(skillId) {
         return skillsData.some(skill => skill.prerequisites.includes(skillId));
     }
     
-    // Utility methods
     getFormData() {
         return {
             name: document.getElementById('skillName').value,
@@ -800,7 +721,6 @@ class SkillTreeEditor {
     }
     
     showNotification(message, type = 'info') {
-        // Simple alert for now - you can enhance this later
         alert(message);
     }
     
@@ -809,7 +729,6 @@ class SkillTreeEditor {
     }
 }
 
-// Global functions for backward compatibility
 let skillTreeEditor;
 
 function initializeSkillTreeEditor() {
