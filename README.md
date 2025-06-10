@@ -38,7 +38,7 @@ A comprehensive web-based skill tree system built with Django, featuring an inte
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/javad-fallah-official/Skill-Tree.git
    cd "Skill Tree"
    ```
 
