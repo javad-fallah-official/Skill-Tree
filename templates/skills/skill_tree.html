@@ -672,6 +672,12 @@
         // Keep existing zoom functionality
         canvas.addEventListener('wheel', handleZoom);
         
+        // Add wheel event to background element for zoom when hovering over empty space
+        const skillTreeBackground = document.getElementById('skillTreeBackground');
+        if (skillTreeBackground) {
+            skillTreeBackground.addEventListener('wheel', handleZoom);
+        }
+        
         // Prevent context menu on right click to avoid interference
         canvas.addEventListener('contextmenu', function(e) {
             e.preventDefault();
