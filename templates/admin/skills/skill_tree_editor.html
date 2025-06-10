@@ -4,176 +4,203 @@
 {% block title %}{{ title }}{% endblock %}
 
 {% block extrahead %}
-<style>
-    .skill-tree-editor {
-        position: relative;
-        width: 100%;
-        height: 800px;
-        background: #1a1a2e;
-        border: 2px solid #333;
-        overflow: hidden;
-        cursor: grab;
-    }
-    .skill-tree-editor:active {
-        cursor: grabbing;
-    }
-    .skill-node {
-        position: absolute;
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        border: 3px solid #666;
-        background: #2a2a3e;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 10px;
-        color: white;
-        text-align: center;
-        transition: all 0.3s;
-        z-index: 10;
-        user-select: none;
-    }
-    .skill-node:hover {
-        transform: scale(1.1);
-        border-color: #4CAF50;
-    }
-    .skill-node.selected {
-        border-color: #FFC107;
-        box-shadow: 0 0 20px rgba(255, 193, 7, 0.5);
-    }
-    .skill-node.dragging {
-        z-index: 100;
-        transform: scale(1.1);
-    }
-    .connection-line {
-        position: absolute;
-        background: #666;
-        height: 2px;
-        transform-origin: left center;
-        z-index: 1;
-    }
-    .controls {
-        position: fixed;
-        top: 100px;
-        right: 20px;
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-        width: 300px;
-        z-index: 1000;
-        max-height: 80vh;
-        overflow-y: auto;
-    }
-    .form-group {
-        margin-bottom: 15px;
-    }
-    .form-group label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: bold;
-    }
-    .form-group input, .form-group select, .form-group textarea {
-        width: 100%;
-        padding: 8px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        box-sizing: border-box;
-    }
-    .btn {
-        padding: 8px 16px;
-        margin: 5px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-    }
-    .btn-primary { background: #007cba; color: white; }
-    .btn-success { background: #28a745; color: white; }
-    .btn-danger { background: #dc3545; color: white; }
-    .btn-secondary { background: #6c757d; color: white; }
-    
-    #skillPrerequisites {
-        height: 100px;
-    }
-    
-    .skill-info {
-        background: rgba(0,0,0,0.8);
-        color: white;
-        padding: 10px;
-        border-radius: 5px;
-        position: absolute;
-        z-index: 1000;
-        pointer-events: none;
-        max-width: 200px;
-        font-size: 12px;
-    }
-</style>
+<link rel="stylesheet" href="{% static 'admin/css/skill-tree-editor.css' %}">
 {% endblock %}
 
 {% block content %}
-<h1>{{ title }}</h1>
+<div class="skill-editor-container">
+    <!-- Header Section -->
+    <div class="editor-header">
+        <h1 class="editor-title">{{ title }}</h1>
+        <div class="editor-actions">
+            <button class="btn btn-outline" onclick="autoArrangeSkills()">
+                <i class="icon-arrange"></i> Auto Arrange
+            </button>
+            <button class="btn btn-outline" onclick="resetView()">
+                <i class="icon-reset"></i> Reset View
+            </button>
+            <button class="btn btn-outline" onclick="toggleGrid()">
+                <i class="icon-grid"></i> Toggle Grid
+            </button>
+        </div>
+    </div>
 
-<div class="skill-tree-editor" id="skillTreeEditor">
-    <!-- Skills will be rendered here -->
-</div>
+    <!-- Main Editor Layout -->
+    <div class="editor-layout">
+        <!-- Skill Tree Canvas -->
+        <div class="canvas-container">
+            <div class="skill-tree-editor" id="skillTreeEditor">
+                <div class="grid-overlay" id="gridOverlay"></div>
+                <!-- Skills will be rendered here -->
+            </div>
+            
+            <!-- Canvas Controls -->
+            <div class="canvas-controls">
+                <div class="zoom-controls">
+                    <button class="zoom-btn" onclick="zoomIn()">+</button>
+                    <span class="zoom-level" id="zoomLevel">100%</span>
+                    <button class="zoom-btn" onclick="zoomOut()">-</button>
+                </div>
+                <div class="view-controls">
+                    <button class="view-btn" onclick="centerView()" title="Center View">
+                        <i class="icon-center"></i>
+                    </button>
+                    <button class="view-btn" onclick="fitToScreen()" title="Fit to Screen">
+                        <i class="icon-fit"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
 
-<div class="controls" id="controlPanel">
-    <h3>Skill Editor</h3>
-    <div id="skillForm">
-        <div class="form-group">
-            <label>Name:</label>
-            <input type="text" id="skillName" placeholder="Skill name">
-        </div>
-        <div class="form-group">
-            <label>Description:</label>
-            <textarea id="skillDescription" placeholder="Skill description"></textarea>
-        </div>
-        <div class="form-group">
-            <label>Category:</label>
-            <select id="skillCategory">
-                {% for category in categories %}
-                <option value="{{ category.id }}">{{ category.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Prerequisites:</label>
-            <select id="skillPrerequisites" multiple>
-                <!-- Will be populated by JavaScript -->
-            </select>
-            <small>Hold Ctrl/Cmd to select multiple skills</small>
-        </div>
-        <div class="form-group">
-            <label>Cost:</label>
-            <input type="number" id="skillCost" value="1" min="1">
-        </div>
-        <div class="form-group">
-            <label>Tier:</label>
-            <input type="number" id="skillTier" value="1" min="1">
-        </div>
-        <div class="form-group">
-            <button class="btn btn-success" onclick="createSkill()" id="createBtn">Create Skill</button>
-            <button class="btn btn-primary" onclick="updateSkill()" id="updateBtn" style="display:none;">Update Skill</button>
-            <button class="btn btn-danger" onclick="deleteSkill()" id="deleteBtn" style="display:none;">Delete Skill</button>
-            <button class="btn btn-secondary" onclick="clearForm()">Clear</button>
-        </div>
-        <div class="form-group">
-            <button class="btn btn-secondary" onclick="autoArrangeSkills()">Auto Arrange</button>
-            <button class="btn btn-secondary" onclick="resetView()">Reset View</button>
+        <!-- Sidebar Panel -->
+        <div class="sidebar-panel" id="sidebarPanel">
+            <!-- Skill Properties Section -->
+            <div class="panel-section">
+                <div class="section-header">
+                    <h3>Skill Properties</h3>
+                    <button class="collapse-btn" onclick="toggleSection('skillProperties')">
+                        <i class="icon-chevron-up"></i>
+                    </button>
+                </div>
+                <div class="section-content" id="skillProperties">
+                    <form id="skillForm" class="skill-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="skillName">Name</label>
+                                <input type="text" id="skillName" class="form-input" placeholder="Enter skill name">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="skillDescription">Description</label>
+                                <textarea id="skillDescription" class="form-textarea" placeholder="Enter skill description" rows="3"></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group half">
+                                <label for="skillCategory">Category</label>
+                                <select id="skillCategory" class="form-select">
+                                    {% for category in categories %}
+                                    <option value="{{ category.id }}">{{ category.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-group half">
+                                <label for="skillTier">Tier</label>
+                                <input type="number" id="skillTier" class="form-input" value="1" min="1">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group half">
+                                <label for="skillCost">Cost</label>
+                                <input type="number" id="skillCost" class="form-input" value="1" min="1">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="skillPrerequisites">Prerequisites</label>
+                                <select id="skillPrerequisites" class="form-select" multiple>
+                                    <!-- Will be populated by JavaScript -->
+                                </select>
+                                <small class="form-hint">Hold Ctrl/Cmd to select multiple skills</small>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Actions Section -->
+            <div class="panel-section">
+                <div class="section-header">
+                    <h3>Actions</h3>
+                </div>
+                <div class="section-content">
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="createSkill()" id="createBtn">
+                            <i class="icon-plus"></i> Create Skill
+                        </button>
+                        <button class="btn btn-success" onclick="updateSkill()" id="updateBtn" style="display:none;">
+                            <i class="icon-save"></i> Update Skill
+                        </button>
+                        <button class="btn btn-danger" onclick="deleteSkill()" id="deleteBtn" style="display:none;">
+                            <i class="icon-trash"></i> Delete Skill
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearForm()">
+                            <i class="icon-clear"></i> Clear Form
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Skills List Section -->
+            <div class="panel-section">
+                <div class="section-header">
+                    <h3>Skills List</h3>
+                    <button class="collapse-btn" onclick="toggleSection('skillsList')">
+                        <i class="icon-chevron-up"></i>
+                    </button>
+                </div>
+                <div class="section-content" id="skillsList">
+                    <div class="skills-search">
+                        <input type="text" id="skillsSearch" class="form-input" placeholder="Search skills..." onkeyup="filterSkills()">
+                    </div>
+                    <div class="skills-list" id="skillsListContainer">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Section -->
+            <div class="panel-section">
+                <div class="section-header">
+                    <h3>Statistics</h3>
+                    <button class="collapse-btn" onclick="toggleSection('statistics')">
+                        <i class="icon-chevron-up"></i>
+                    </button>
+                </div>
+                <div class="section-content" id="statistics">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Total Skills</span>
+                            <span class="stat-value" id="totalSkills">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Categories</span>
+                            <span class="stat-value" id="totalCategories">{{ categories|length }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Max Tier</span>
+                            <span class="stat-value" id="maxTier">1</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Connections</span>
+                            <span class="stat-value" id="totalConnections">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
-<script>
-let selectedSkill = null;
-let isDragging = false;
-let dragOffset = { x: 0, y: 0 };
-let panOffset = { x: 0, y: 0 };
-let isPanning = false;
-let skillTooltip = null;
+<!-- Skill Tooltip -->
+<div class="skill-tooltip" id="skillTooltip" style="display: none;">
+    <div class="tooltip-content">
+        <h4 class="tooltip-title"></h4>
+        <p class="tooltip-description"></p>
+        <div class="tooltip-meta">
+            <span class="tooltip-cost"></span>
+            <span class="tooltip-tier"></span>
+        </div>
+    </div>
+</div>
 
+<script src="{% static 'admin/js/skill-tree-editor.js' %}"></script>
+<script>
 // Initialize skills data
 let skillsData = [
     {% for skill in skills %}
@@ -192,565 +219,9 @@ let skillsData = [
     {% endfor %}
 ];
 
-// Auto-arrange skills if they're overlapping
-function autoArrangeSkills() {
-    if (skillsData.length === 0) return;
-    
-    const nodeRadius = 40; // Including some padding
-    const minDistance = nodeRadius * 2;
-    
-    // Group skills by tier for better arrangement
-    const tierGroups = {};
-    skillsData.forEach(skill => {
-        if (!tierGroups[skill.tier]) {
-            tierGroups[skill.tier] = [];
-        }
-        tierGroups[skill.tier].push(skill);
-    });
-    
-    let currentY = -200;
-    Object.keys(tierGroups).sort((a, b) => parseInt(a) - parseInt(b)).forEach(tier => {
-        const skills = tierGroups[tier];
-        const skillsPerRow = Math.ceil(Math.sqrt(skills.length));
-        const rowWidth = skillsPerRow * minDistance;
-        
-        skills.forEach((skill, index) => {
-            const row = Math.floor(index / skillsPerRow);
-            const col = index % skillsPerRow;
-            
-            skill.x = (col * minDistance) - (rowWidth / 2) + (minDistance / 2);
-            skill.y = currentY + (row * minDistance);
-        });
-        
-        const rows = Math.ceil(skills.length / skillsPerRow);
-        currentY += (rows * minDistance) + 50; // Add spacing between tiers
-    });
-    
-    // Update positions in database
-    skillsData.forEach(skill => {
-        updateSkillPositionInDB(skill.id, skill.x, skill.y);
-    });
-    
-    initializeSkillTree();
-}
-
-// Check for overlapping skills and find a free position
-function findFreePosition(excludeId = null) {
-    const nodeRadius = 40;
-    const minDistance = nodeRadius * 2;
-    const maxAttempts = 100;
-    
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const angle = (attempt * 137.5) * (Math.PI / 180); // Golden angle for spiral
-        const radius = Math.sqrt(attempt) * 30;
-        const x = Math.cos(angle) * radius;
-        const y = Math.sin(angle) * radius;
-        
-        let isOverlapping = false;
-        for (let skill of skillsData) {
-            if (excludeId && skill.id === excludeId) continue;
-            
-            const distance = Math.sqrt(Math.pow(x - skill.x, 2) + Math.pow(y - skill.y, 2));
-            if (distance < minDistance) {
-                isOverlapping = true;
-                break;
-            }
-        }
-        
-        if (!isOverlapping) {
-            return { x, y };
-        }
-    }
-    
-    // Fallback to random position if spiral fails
-    return {
-        x: (Math.random() - 0.5) * 400,
-        y: (Math.random() - 0.5) * 400
-    };
-}
-
-// Check if position is valid (not overlapping)
-function isValidPosition(x, y, excludeId = null) {
-    const nodeRadius = 40;
-    const minDistance = nodeRadius * 2;
-    
-    for (let skill of skillsData) {
-        if (excludeId && skill.id === excludeId) continue;
-        
-        const distance = Math.sqrt(Math.pow(x - skill.x, 2) + Math.pow(y - skill.y, 2));
-        if (distance < minDistance) {
-            return false;
-        }
-    }
-    return true;
-}
-
-function initializeSkillTree() {
-    const editor = document.getElementById('skillTreeEditor');
-    
-    // Clear existing content
-    editor.innerHTML = '';
-    
-    // Update prerequisites dropdown
-    updatePrerequisitesDropdown();
-    
-    // If no skills exist, show a message
-    if (skillsData.length === 0) {
-        const message = document.createElement('div');
-        message.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 18px; text-align: center;';
-        message.innerHTML = 'No skills found.<br>Create your first skill using the form on the right.';
-        editor.appendChild(message);
-        return;
-    }
-    
-    // Draw connection lines first
-    skillsData.forEach(skill => {
-        skill.prerequisites.forEach(prereqId => {
-            const prereq = skillsData.find(s => s.id === prereqId);
-            if (prereq) {
-                drawConnection(prereq, skill);
-            }
-        });
-    });
-    
-    // Draw skill nodes
-    skillsData.forEach(skill => {
-        createSkillNode(skill);
-    });
-}
-
-function updatePrerequisitesDropdown() {
-    const select = document.getElementById('skillPrerequisites');
-    select.innerHTML = '';
-    
-    skillsData.forEach(skill => {
-        if (!selectedSkill || skill.id !== selectedSkill.id) {
-            const option = document.createElement('option');
-            option.value = skill.id;
-            option.textContent = `${skill.name} (T${skill.tier})`;
-            select.appendChild(option);
-        }
-    });
-}
-
-function createSkillNode(skill) {
-    const editor = document.getElementById('skillTreeEditor');
-    const node = document.createElement('div');
-    node.className = 'skill-node';
-    node.id = `skill-${skill.id}`;
-    node.style.left = `${skill.x + 400}px`; // Center offset
-    node.style.top = `${skill.y + 400}px`;
-    node.innerHTML = `<div>${skill.name}<br><small>T${skill.tier}</small></div>`;
-    
-    let dragStartTime = 0;
-    let hasDragged = false;
-    
-    // Add event listeners
-    node.addEventListener('mousedown', (e) => {
-        // Prevent text selection during drag
-        e.preventDefault();
-        dragStartTime = Date.now();
-        hasDragged = false;
-        startDrag(e, skill);
-    });
-    
-    node.addEventListener('click', (e) => {
-        e.stopPropagation();
-        // Only select if it was a quick click (not a drag)
-        const clickDuration = Date.now() - dragStartTime;
-        if (!hasDragged && clickDuration < 200) {
-            selectSkill(e, skill);
-        }
-    });
-    
-    // Double-click as backup for selection
-    node.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        selectSkill(e, skill);
-    });
-    
-    // Tooltip on hover
-    node.addEventListener('mouseenter', (e) => showTooltip(e, skill));
-    node.addEventListener('mouseleave', hideTooltip);
-    
-    editor.appendChild(node);
-}
-
-function showTooltip(e, skill) {
-    if (isDragging) return;
-    
-    hideTooltip();
-    
-    skillTooltip = document.createElement('div');
-    skillTooltip.className = 'skill-info';
-    skillTooltip.innerHTML = `
-        <strong>${skill.name}</strong><br>
-        ${skill.description}<br>
-        <small>Cost: ${skill.cost} | Tier: ${skill.tier}</small>
-    `;
-    
-    document.body.appendChild(skillTooltip);
-    
-    const rect = e.target.getBoundingClientRect();
-    skillTooltip.style.left = `${rect.right + 10}px`;
-    skillTooltip.style.top = `${rect.top}px`;
-}
-
-function hideTooltip() {
-    if (skillTooltip) {
-        skillTooltip.remove();
-        skillTooltip = null;
-    }
-}
-
-function drawConnection(from, to) {
-    const editor = document.getElementById('skillTreeEditor');
-    const line = document.createElement('div');
-    line.className = 'connection-line';
-    
-    const fromX = from.x + 400 + 30; // Center of node
-    const fromY = from.y + 400 + 30;
-    const toX = to.x + 400 + 30;
-    const toY = to.y + 400 + 30;
-    
-    const length = Math.sqrt(Math.pow(toX - fromX, 2) + Math.pow(toY - fromY, 2));
-    const angle = Math.atan2(toY - fromY, toX - fromX) * 180 / Math.PI;
-    
-    line.style.left = `${fromX}px`;
-    line.style.top = `${fromY}px`;
-    line.style.width = `${length}px`;
-    line.style.transform = `rotate(${angle}deg)`;
-    
-    editor.appendChild(line);
-}
-
-function startDrag(e, skill) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    selectedSkill = skill;
-    isDragging = true;
-    
-    const node = document.getElementById(`skill-${skill.id}`);
-    node.classList.add('dragging');
-    
-    const rect = e.target.getBoundingClientRect();
-    dragOffset.x = e.clientX - rect.left;
-    dragOffset.y = e.clientY - rect.top;
-    
-    hideTooltip();
-    
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('mouseup', stopDrag);
-}
-
-function drag(e) {
-    if (!isDragging || !selectedSkill) return;
-    
-    hasDragged = true; // Mark that dragging occurred
-    
-    const editor = document.getElementById('skillTreeEditor');
-    const rect = editor.getBoundingClientRect();
-    
-    const x = e.clientX - rect.left - dragOffset.x;
-    const y = e.clientY - rect.top - dragOffset.y;
-    
-    const newX = x - 400;
-    const newY = y - 400;
-    
-    // Check if new position is valid (not overlapping)
-    if (isValidPosition(newX, newY, selectedSkill.id)) {
-        selectedSkill.x = newX;
-        selectedSkill.y = newY;
-        
-        const node = document.getElementById(`skill-${selectedSkill.id}`);
-        node.style.left = `${x}px`;
-        node.style.top = `${y}px`;
-    }
-}
-
-function stopDrag() {
-    if (isDragging && selectedSkill) {
-        const node = document.getElementById(`skill-${selectedSkill.id}`);
-        node.classList.remove('dragging');
-        
-        // Update position in database
-        updateSkillPositionInDB(selectedSkill.id, selectedSkill.x, selectedSkill.y);
-        
-        // Redraw connections
-        setTimeout(() => initializeSkillTree(), 100);
-    }
-    
-    // Reset dragging state after a short delay to prevent click event
-    setTimeout(() => {
-        isDragging = false;
-    }, 50);
-    
-    document.removeEventListener('mousemove', drag);
-    document.removeEventListener('mouseup', stopDrag);
-}
-
-function updateSkillPositionInDB(skillId, x, y) {
-    fetch('/admin/skills/skill/update-skill-position/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            skill_id: skillId,
-            x: x,
-            y: y
-        })
-    }).catch(error => console.error('Error updating position:', error));
-}
-
-function selectSkill(e, skill) {
-    console.log('Selecting skill:', skill.name); // Debug log
-    
-    // Remove previous selection
-    document.querySelectorAll('.skill-node').forEach(node => {
-        node.classList.remove('selected');
-    });
-    
-    // Select current skill
-    const node = e.target.closest('.skill-node');
-    if (node) {
-        node.classList.add('selected');
-    }
-    
-    selectedSkill = skill;
-    
-    // Populate form
-    document.getElementById('skillName').value = skill.name;
-    document.getElementById('skillDescription').value = skill.description;
-    document.getElementById('skillCategory').value = skill.category_id;
-    document.getElementById('skillCost').value = skill.cost;
-    document.getElementById('skillTier').value = skill.tier;
-    
-    // Update prerequisites dropdown and select current prerequisites
-    updatePrerequisitesDropdown();
-    const prereqSelect = document.getElementById('skillPrerequisites');
-    Array.from(prereqSelect.options).forEach(option => {
-        option.selected = skill.prerequisites.includes(parseInt(option.value));
-    });
-    
-    // Show update/delete buttons, hide create button
-    const createBtn = document.getElementById('createBtn');
-    const updateBtn = document.getElementById('updateBtn');
-    const deleteBtn = document.getElementById('deleteBtn');
-    
-    if (createBtn) createBtn.style.display = 'none';
-    if (updateBtn) updateBtn.style.display = 'inline-block';
-    if (deleteBtn) deleteBtn.style.display = 'inline-block';
-    
-    console.log('Buttons updated - Update:', updateBtn ? 'visible' : 'not found', 'Delete:', deleteBtn ? 'visible' : 'not found'); // Debug log
-}
-
-function createSkill() {
-    const position = findFreePosition();
-    
-    const skillData = {
-        name: document.getElementById('skillName').value || 'New Skill',
-        description: document.getElementById('skillDescription').value,
-        category_id: document.getElementById('skillCategory').value,
-        cost: parseInt(document.getElementById('skillCost').value),
-        tier: parseInt(document.getElementById('skillTier').value),
-        x: position.x,
-        y: position.y,
-        prerequisites: Array.from(document.getElementById('skillPrerequisites').selectedOptions).map(option => parseInt(option.value))
-    };
-    
-    fetch('/admin/skills/skill/create-skill-ajax/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(skillData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Add to local data
-            skillsData.push({
-                id: data.skill.id,
-                name: data.skill.name,
-                description: data.skill.description,
-                category: data.skill.category,
-                category_id: skillData.category_id,
-                cost: data.skill.cost,
-                tier: data.skill.tier,
-                x: skillData.x,
-                y: skillData.y,
-                prerequisites: skillData.prerequisites
-            });
-            
-            // Refresh display
-            initializeSkillTree();
-            clearForm();
-        } else {
-            alert('Error creating skill: ' + data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error creating skill');
-    });
-}
-
-function updateSkill() {
-    if (!selectedSkill) {
-        alert('No skill selected for update');
-        return;
-    }
-    
-    const skillData = {
-        name: document.getElementById('skillName').value,
-        description: document.getElementById('skillDescription').value,
-        category_id: document.getElementById('skillCategory').value,
-        cost: parseInt(document.getElementById('skillCost').value),
-        tier: parseInt(document.getElementById('skillTier').value),
-        prerequisites: Array.from(document.getElementById('skillPrerequisites').selectedOptions).map(option => parseInt(option.value))
-    };
-    
-    fetch(`/admin/skills/skill/update-skill-ajax/${selectedSkill.id}/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(skillData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Update local data
-            const skillIndex = skillsData.findIndex(s => s.id === selectedSkill.id);
-            if (skillIndex !== -1) {
-                skillsData[skillIndex] = {
-                    ...skillsData[skillIndex],
-                    ...skillData,
-                    prerequisites: skillData.prerequisites
-                };
-            }
-            
-            // Refresh display
-            initializeSkillTree();
-            clearForm();
-            alert('Skill updated successfully!');
-        } else {
-            alert('Error updating skill: ' + data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error updating skill');
-    });
-}
-
-function deleteSkill() {
-    if (!selectedSkill) {
-        alert('No skill selected for deletion');
-        return;
-    }
-    
-    if (confirm(`Are you sure you want to delete "${selectedSkill.name}"?\n\nThis will also remove it as a prerequisite from other skills.`)) {
-        fetch(`/admin/skills/skill/delete-skill-ajax/${selectedSkill.id}/`, {
-            method: 'DELETE'
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Remove from local data and clean up prerequisites
-                skillsData = skillsData.filter(s => s.id !== selectedSkill.id);
-                skillsData.forEach(skill => {
-                    skill.prerequisites = skill.prerequisites.filter(prereqId => prereqId !== selectedSkill.id);
-                });
-                
-                // Refresh display
-                initializeSkillTree();
-                clearForm();
-                alert('Skill deleted successfully!');
-            } else {
-                alert('Error deleting skill: ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error deleting skill');
-        });
-    }
-}
-
-function clearForm() {
-    document.getElementById('skillName').value = '';
-    document.getElementById('skillDescription').value = '';
-    document.getElementById('skillCost').value = '1';
-    document.getElementById('skillTier').value = '1';
-    
-    // Clear prerequisites selection
-    const prereqSelect = document.getElementById('skillPrerequisites');
-    Array.from(prereqSelect.options).forEach(option => {
-        option.selected = false;
-    });
-    
-    // Show create button, hide update/delete buttons
-    const createBtn = document.getElementById('createBtn');
-    const updateBtn = document.getElementById('updateBtn');
-    const deleteBtn = document.getElementById('deleteBtn');
-    
-    if (createBtn) createBtn.style.display = 'inline-block';
-    if (updateBtn) updateBtn.style.display = 'none';
-    if (deleteBtn) deleteBtn.style.display = 'none';
-    
-    selectedSkill = null;
-    
-    // Remove selection
-    document.querySelectorAll('.skill-node').forEach(node => {
-        node.classList.remove('selected');
-    });
-}
-
-function resetView() {
-    // Reset all skills to center area
-    skillsData.forEach(skill => {
-        skill.x = 0;
-        skill.y = 0;
-    });
-    
-    autoArrangeSkills();
-}
-
-// Click outside to deselect
-document.getElementById('skillTreeEditor').addEventListener('click', (e) => {
-    if (e.target.id === 'skillTreeEditor') {
-        clearForm();
-    }
-});
-
-// Initialize on page load
+// Initialize editor
 document.addEventListener('DOMContentLoaded', () => {
-    initializeSkillTree();
-    
-    // Auto-arrange if skills are overlapping on load
-    if (skillsData.length > 1) {
-        let hasOverlaps = false;
-        for (let i = 0; i < skillsData.length; i++) {
-            for (let j = i + 1; j < skillsData.length; j++) {
-                const distance = Math.sqrt(
-                    Math.pow(skillsData[i].x - skillsData[j].x, 2) + 
-                    Math.pow(skillsData[i].y - skillsData[j].y, 2)
-                );
-                if (distance < 80) {
-                    hasOverlaps = true;
-                    break;
-                }
-            }
-            if (hasOverlaps) break;
-        }
-        
-        if (hasOverlaps) {
-            setTimeout(autoArrangeSkills, 500);
-        }
-    }
+    initializeSkillTreeEditor();
 });
 </script>
 {% endblock %}
