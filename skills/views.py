@@ -7,6 +7,7 @@ from .models import Skill, SkillCategory, UserProfile, UserSkill
 from django.db import transaction
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import login
+from django.views.decorators.csrf import csrf_exempt
 
 @login_required
 def skill_tree(request):
@@ -92,3 +93,35 @@ def register(request):
         form = UserCreationForm()
     
     return render(request, 'registration/register.html', {'form': form})
+
+
+@login_required
+@csrf_exempt
+def reset_skills(request):
+    if request.method == 'POST':
+        try:
+            user_profile = request.user.userprofile
+            
+            # Reset all skills for the user
+            user_skills = UserSkill.objects.filter(user=request.user, unlocked=True)
+            total_points_to_refund = sum(skill.skill.cost for skill in user_skills)
+            
+            # Delete all user skills
+            user_skills.delete()
+            
+            # Refund skill points by reducing spent_skill_points
+            user_profile.spent_skill_points = max(0, user_profile.spent_skill_points - total_points_to_refund)
+            user_profile.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Reset complete. Refunded {total_points_to_refund} skill points.'
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})

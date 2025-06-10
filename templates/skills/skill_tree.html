@@ -24,11 +24,18 @@
             position: absolute;
             top: 0;
             left: 0;
-            cursor: grab;
+            cursor: grab !important;
             transition: transform 0.1s ease-out;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        .skill-tree-canvas:active {
+            cursor: grabbing;
         }
         
-        .skill-tree-canvas:active {
+        .skill-tree-canvas.panning {
             cursor: grabbing;
         }
         
@@ -179,9 +186,12 @@
             bottom: 20px;
             right: 20px;
             pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
         }
         
-        .zoom-btn {
+        .zoom-btn, .reset-btn {
             background: rgba(0,0,0,0.8);
             border: 2px solid #333;
             color: white;
@@ -189,7 +199,6 @@
             height: 40px;
             border-radius: 50%;
             cursor: pointer;
-            margin: 5px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -197,9 +206,20 @@
             transition: all 0.3s;
         }
         
-        .zoom-btn:hover {
+        .zoom-btn:hover, .reset-btn:hover {
             border-color: #d4af37;
             background: rgba(212, 175, 55, 0.2);
+        }
+        
+        .reset-btn {
+            font-size: 14px;
+            background: rgba(139, 0, 0, 0.8);
+            border-color: #8b0000;
+        }
+        
+        .reset-btn:hover {
+            border-color: #ff4444;
+            background: rgba(255, 68, 68, 0.2);
         }
         
         .category-legend {
@@ -230,7 +250,10 @@
 </head>
 <body>
     <div class="skill-tree-container">
-        <div class="skill-tree-canvas" id="skillTreeCanvas">
+        <!-- Add a background layer for panning -->
+        <div class="skill-tree-background" id="skillTreeBackground" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: auto; cursor: grab;"></div>
+        
+        <div class="skill-tree-canvas" id="skillTreeCanvas" style="transform: translate(680.5px, 477px) scale(1);">
             <!-- Skills and connections will be rendered here -->
         </div>
         
@@ -252,9 +275,10 @@
             </div>
             
             <div class="zoom-controls">
-                <button class="zoom-btn" onclick="zoomIn()">+</button>
-                <button class="zoom-btn" onclick="zoomOut()">−</button>
+                <button class="zoom-btn" onclick="zoomIn()" title="Zoom In">+</button>
+                <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out">-</button>
                 <button class="zoom-btn" onclick="resetZoom()" title="Reset Zoom">⌂</button>
+                <button class="reset-btn" onclick="resetSkillTree()" title="Reset All Skills">↺</button>
             </div>
             
             <div class="category-legend">
@@ -417,24 +441,159 @@
             });
         }
         
-        // Pan and zoom functionality
-        canvas.addEventListener('mousedown', startPan);
+        // Pan and zoom functionality - COMPLETE REPLACEMENT
+        let isPanning = false;
+        let panStart = { x: 0, y: 0 };
+        
+        // Remove any existing listeners first
+        canvas.removeEventListener('mousedown', startPan);
+        
+        // Get the background element for panning
+        const background = document.getElementById('skillTreeBackground');
+        
+        // Add panning to BOTH canvas and background
+        function attachPanningEvents(element, elementName) {
+            element.addEventListener('mousedown', function(e) {
+                console.log(`Mouse down on ${elementName}:`, e.target.tagName, e.target.className);
+                
+                // Only handle left mouse button
+                if (e.button !== 0) return;
+                
+                // Don't pan if clicking on skill nodes or UI elements
+                if (e.target.classList.contains('skill-node') || 
+                    e.target.closest('.skill-node') || 
+                    e.target.closest('.ui-overlay') ||
+                    e.target.closest('.zoom-controls')) {
+                    console.log('Clicked on interactive element, not panning');
+                    return;
+                }
+                
+                console.log('Starting pan from', elementName);
+                isPanning = true;
+                panStart = { x: e.clientX, y: e.clientY };
+                element.style.cursor = 'grabbing';
+                
+                // Add document listeners for smooth panning
+                document.addEventListener('mousemove', handlePanMove);
+                document.addEventListener('mouseup', handlePanEnd);
+                
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        }
+        
+        function handlePanMove(e) {
+            if (!isPanning) return;
+            
+            const deltaX = e.clientX - panStart.x;
+            const deltaY = e.clientY - panStart.y;
+            
+            console.log('Panning:', deltaX, deltaY);
+            
+            canvasOffset.x += deltaX;
+            canvasOffset.y += deltaY;
+            
+            updateCanvasTransform();
+            
+            panStart = { x: e.clientX, y: e.clientY };
+            e.preventDefault();
+        }
+        
+        function handlePanEnd(e) {
+            if (!isPanning) return;
+            
+            console.log('Pan ended');
+            isPanning = false;
+            canvas.style.cursor = 'grab';
+            
+            document.removeEventListener('mousemove', handlePanMove);
+            document.removeEventListener('mouseup', handlePanEnd);
+        }
+        
+        // Attach panning to both canvas and background
+        attachPanningEvents(canvas, 'canvas');
+        if (background) {
+            attachPanningEvents(background, 'background');
+            console.log('Background panning attached');
+        } else {
+            console.log('Background element not found');
+        }
+        
+        // Prevent context menu
+        canvas.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
+        
+        // Keep existing zoom functionality
         canvas.addEventListener('wheel', handleZoom);
         
+        // Prevent context menu on right click to avoid interference
+        canvas.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
+        
+        // Enhanced panning with better debugging
         function startPan(e) {
-            if (e.target === canvas) {
+            console.log('startPan called - Target:', e.target.tagName, 'Classes:', e.target.className);
+            console.log('Button:', e.button, 'Client coords:', e.clientX, e.clientY);
+            
+            // Only start panning on left mouse button
+            if (e.button !== 0) {
+                console.log('Not left button, returning');
+                return;
+            }
+            
+            // Allow panning on:
+            // 1. Canvas background itself
+            // 2. SVG lines/paths (connection lines)
+            // 3. Empty areas
+            const isSkillNode = e.target.classList.contains('skill-node') || 
+                               e.target.parentElement?.classList.contains('skill-node');
+            const isUIElement = e.target.closest('.ui-overlay') || 
+                               e.target.closest('.zoom-controls') ||
+                               e.target.closest('.skill-info-panel');
+            
+            // Allow panning on canvas, SVG elements (lines), or any non-interactive elements
+            const canPan = e.target === canvas || 
+                          e.target.classList.contains('skill-tree-canvas') ||
+                          e.target.tagName === 'svg' ||
+                          e.target.tagName === 'path' ||
+                          e.target.tagName === 'line' ||
+                          (!isSkillNode && !isUIElement);
+            
+            console.log('Is skill node:', isSkillNode, 'Is UI element:', isUIElement, 'Can pan:', canPan);
+            
+            if (canPan) {
+                console.log('Starting pan - setting isDragging to true');
                 isDragging = true;
+                canvas.classList.add('panning');
                 lastMousePos = { x: e.clientX, y: e.clientY };
-                document.addEventListener('mousemove', pan);
-                document.addEventListener('mouseup', stopPan);
+                
+                // Add event listeners to document for better capture
+                document.addEventListener('mousemove', pan, { passive: false });
+                document.addEventListener('mouseup', stopPan, { passive: false });
+                
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log('Pan started successfully');
+            } else {
+                console.log('Not starting pan - clicked on skill node or UI element');
             }
         }
         
         function pan(e) {
-            if (!isDragging) return;
+            if (!isDragging) {
+                console.log('pan called but isDragging is false');
+                return;
+            }
+            
+            console.log('Panning - mouse at:', e.clientX, e.clientY);
             
             const deltaX = e.clientX - lastMousePos.x;
             const deltaY = e.clientY - lastMousePos.y;
+            
+            console.log('Delta:', deltaX, deltaY);
             
             canvasOffset.x += deltaX;
             canvasOffset.y += deltaY;
@@ -442,12 +601,16 @@
             updateCanvasTransform();
             
             lastMousePos = { x: e.clientX, y: e.clientY };
+            e.preventDefault();
         }
         
-        function stopPan() {
+        function stopPan(e) {
+            console.log('stopPan called, isDragging was:', isDragging);
             isDragging = false;
+            canvas.classList.remove('panning');
             document.removeEventListener('mousemove', pan);
             document.removeEventListener('mouseup', stopPan);
+            console.log('Pan stopped');
         }
         
         function handleZoom(e) {
@@ -499,6 +662,59 @@
         csrfInput.name = 'csrfmiddlewaretoken';
         csrfInput.value = csrfToken;
         document.body.appendChild(csrfInput);
+        
+        // Reset skill tree function
+        function resetSkillTree() {
+            if (confirm('Are you sure you want to reset all skills? This will refund all skill points.')) {
+                fetch('/skills/reset/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken'),
+                        'Content-Type': 'application/json',
+                    },
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Reload the page to refresh skill tree and points
+                        location.reload();
+                    } else {
+                        alert('Error resetting skills: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error resetting skills. Please try again.');
+                });
+            }
+        }
+        
+        // Helper function to get CSRF token
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        
+        // Debug panning - add this temporarily to test
+        console.log('Canvas element:', canvas);
+        console.log('Canvas event listeners attached');
+        
+        // REMOVE THIS DUPLICATE LISTENER:
+        // canvas.addEventListener('mousedown', function(e) {
+        //     console.log('Mouse down on:', e.target, 'Button:', e.button);
+        //     console.log('Target classes:', e.target.classList);
+        //     console.log('Closest skill node:', e.target.closest('.skill-node'));
+        // });
     </script>
 </body>
 </html>
